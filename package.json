@@ -1,0 +1,25 @@
+{
+  "name": "float-memo",
+  "version": "1.0.0",
+  "description": "항상 다른 프로그램 위에 떠 있는 투명도 조절 메모장 (굵게 / 토글 블록 지원)",
+  "main": "src/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/renderer.test.js",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.example.floatmemo",
+    "productName": "FloatMemo",
+    "files": ["src/**/*", "package.json"],
+    "win": { "target": ["nsis", "portable"] },
+    "mac": { "target": ["dmg"] },
+    "linux": { "target": ["AppImage"] }
+  }
+}

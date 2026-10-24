@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>FloatMemo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header id="titlebar">
+    <span class="grip" title="드래그해서 이동"></span>
+
+    <div class="tools">
+      <button id="btn-bold" class="tool" title="굵게 (Ctrl+B)"><b>B</b></button>
+      <button id="btn-toggle" class="tool" title="토글 블록 (Ctrl+Shift+T 또는 줄 앞에 '&gt; ' 입력)">▸</button>
+    </div>
+
+    <label class="opacity" title="투명도 (Ctrl+Shift+↑/↓)">
+      <span class="icon">◐</span>
+      <input id="opacity" type="range" min="15" max="100" step="1" value="92" />
+      <span id="opacity-value">92%</span>
+    </label>
+
+    <div class="window-controls">
+      <button id="btn-pin" class="tool pin" title="항상 위에 고정 켜기/끄기">📌</button>
+      <button id="btn-min" class="tool" title="최소화">–</button>
+      <button id="btn-close" class="tool close" title="닫기">✕</button>
+    </div>
+  </header>
+
+  <main id="editor" contenteditable="true" spellcheck="false" data-placeholder="메모를 입력하세요…  ('> ' + 제목으로 토글 블록)"></main>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

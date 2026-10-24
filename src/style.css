@@ -1,0 +1,161 @@
+:root {
+  --paper: #fff8c6;
+  --paper-edge: #f3e9a4;
+  --ink: #2b2b2b;
+  --muted: #8a8358;
+  --accent: #d9a400;
+  --bar: rgba(0, 0, 0, 0.06);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+  user-select: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--paper-edge);
+}
+
+/* ---------- 타이틀바 (드래그 영역) ---------- */
+#titlebar {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 6px;
+  background: var(--bar);
+  flex: 0 0 auto;
+}
+
+#titlebar .grip {
+  width: 18px;
+  height: 14px;
+  flex: 0 0 auto;
+  background: radial-gradient(circle, rgba(0,0,0,.28) 1px, transparent 1.4px) 0 0 / 5px 5px;
+  opacity: .7;
+}
+
+#titlebar .tools,
+#titlebar .window-controls,
+#titlebar .opacity,
+#titlebar button,
+#titlebar input {
+  -webkit-app-region: no-drag;
+}
+
+#titlebar .tools { display: flex; gap: 2px; }
+#titlebar .opacity {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+#titlebar .opacity input[type="range"] {
+  width: 70px;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+#titlebar .window-controls { display: flex; gap: 2px; }
+
+.tool {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tool:hover { background: rgba(0, 0, 0, 0.09); }
+.tool:active { background: rgba(0, 0, 0, 0.16); }
+.tool.active { background: rgba(217, 164, 0, 0.35); }
+.tool.pin { font-size: 13px; filter: grayscale(1); opacity: .55; }
+.tool.pin.active { filter: none; opacity: 1; background: transparent; }
+.tool.close:hover { background: #e5533d; color: #fff; }
+
+/* ---------- 편집 영역 ---------- */
+#editor {
+  flex: 1 1 auto;
+  padding: 12px 14px 20px;
+  overflow-y: auto;
+  outline: none;
+  line-height: 1.55;
+  user-select: text;
+  cursor: text;
+  word-break: break-word;
+}
+#editor:empty::before,
+#editor.is-empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+  position: absolute;
+}
+#editor > div, #editor .toggle-body > div { min-height: 1.55em; }
+#editor b, #editor strong { font-weight: 700; }
+
+#editor::-webkit-scrollbar { width: 8px; }
+#editor::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 4px; }
+
+/* ---------- 토글 블록 (노션 스타일) ---------- */
+.toggle {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  grid-template-areas:
+    "arrow title"
+    ".     body";
+  margin: 2px 0;
+}
+.toggle-arrow {
+  grid-area: arrow;
+  width: 20px;
+  height: 1.55em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  color: var(--muted);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.toggle-arrow:hover { background: rgba(0,0,0,.08); color: var(--ink); }
+.toggle-arrow::before {
+  content: "";
+  border-style: solid;
+  border-width: 5px 0 5px 7px;
+  border-color: transparent transparent transparent currentColor;
+  transform: rotate(90deg);
+  transition: transform .12s ease;
+}
+.toggle[data-open="false"] .toggle-arrow::before { transform: rotate(0deg); }
+
+.toggle-title { grid-area: title; min-height: 1.55em; }
+.toggle-title:empty::before { content: "토글"; color: var(--muted); }
+.toggle-body {
+  grid-area: body;
+  padding-left: 2px;
+  border-left: 1px dashed rgba(0,0,0,.12);
+  margin-left: -11px;
+  padding-left: 11px;
+}
+.toggle[data-open="false"] .toggle-body { display: none; }
