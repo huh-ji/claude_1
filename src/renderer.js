@@ -7,18 +7,32 @@
   const btnPin = document.getElementById('btn-pin');
   const btnMin = document.getElementById('btn-min');
   const btnClose = document.getElementById('btn-close');
-  const opacityInput = document.getElementById('opacity');
-  const opacityValue = document.getElementById('opacity-value');
+  const btnSettings = document.getElementById('btn-settings');
+  const settingsPanel = document.getElementById('settings');
+  const bgOpacityInput = document.getElementById('bg-opacity');
+  const bgOpacityValue = document.getElementById('bg-opacity-value');
+  const fontSizeInput = document.getElementById('font-size');
+  const fontSizeValue = document.getElementById('font-size-value');
+  const textColorInput = document.getElementById('text-color');
+  const paperColorInput = document.getElementById('paper-color');
+  const btnReset = document.getElementById('btn-reset');
+  const colorTextInput = document.getElementById('color-text');
+  const colorHiliteInput = document.getElementById('color-hilite');
 
   // Electron 밖(브라우저 테스트)에서도 동작하도록 안전한 대체 API
   const api = window.memo || {
-    getState: async () => ({ content: '', opacity: 0.92, pinned: true, platform: 'web' }),
+    getState: async () => ({ content: '', pinned: true, settings: {}, defaults: {}, platform: 'web' }),
     saveContent: () => {},
-    setOpacity: () => {},
+    setSettings: () => {},
     setPinned: () => {},
+    getBounds: async () => null,
+    setBounds: () => {},
     minimize: () => {},
     close: () => {},
   };
+
+  const DEFAULTS = { bgOpacity: 0.92, fontSize: 14, textColor: '#2b2b2b', paperColor: '#fff8c6' };
+  let settings = { ...DEFAULTS };
 
   document.execCommand('defaultParagraphSeparator', false, 'div');
 
@@ -205,7 +219,22 @@
     }
     if (mod && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
-      nudgeOpacity(e.key === 'ArrowUp' ? 5 : -5);
+      updateSettings({ bgOpacity: settings.bgOpacity + (e.key === 'ArrowUp' ? 0.05 : -0.05) });
+      return;
+    }
+    if (mod && (e.key === '=' || e.key === '+')) {
+      e.preventDefault();
+      updateSettings({ fontSize: settings.fontSize + 1 });
+      return;
+    }
+    if (mod && e.key === '-') {
+      e.preventDefault();
+      updateSettings({ fontSize: settings.fontSize - 1 });
+      return;
+    }
+    if (mod && e.key === '0') {
+      e.preventDefault();
+      updateSettings({ fontSize: DEFAULTS.fontSize });
       return;
     }
 
@@ -339,7 +368,7 @@
   });
 
   // -------------------------------------------------------------------------
-  // 툴바
+  // 툴바: 굵게 / 토글 / 선택 글자색 / 형광펜
   // -------------------------------------------------------------------------
   btnBold.addEventListener('mousedown', (e) => e.preventDefault()); // 포커스 유지
   btnBold.addEventListener('click', toggleBold);
@@ -348,6 +377,40 @@
   btnMin.addEventListener('click', () => api.minimize());
   btnClose.addEventListener('click', () => api.close());
 
+  // 색상 선택기를 열면 에디터 포커스가 빠지므로, 열기 직전의 선택 영역을 기억했다가 복원
+  let savedRange = null;
+  function rememberSelection() {
+    const r = getRange();
+    savedRange = r ? r.cloneRange() : null;
+  }
+  function restoreSelection() {
+    editor.focus();
+    if (!savedRange) return;
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(savedRange);
+  }
+  function applySelectionColor(command, color) {
+    restoreSelection();
+    document.execCommand('styleWithCSS', false, 'true');
+    document.execCommand(command, false, color);
+    rememberSelection();
+    scheduleSave();
+  }
+  function wireColorTool(input, command) {
+    const label = input.closest('.color-tool');
+    const setSwatch = () => label.style.setProperty('--swatch', input.value);
+    setSwatch();
+    input.addEventListener('pointerdown', rememberSelection);
+    input.addEventListener('focus', () => { if (!savedRange) rememberSelection(); });
+    input.addEventListener('input', () => { setSwatch(); applySelectionColor(command, input.value); });
+  }
+  wireColorTool(colorTextInput, 'foreColor');
+  wireColorTool(colorHiliteInput, 'hiliteColor');
+
+  // -------------------------------------------------------------------------
+  // 항상 위 고정
+  // -------------------------------------------------------------------------
   let pinned = true;
   function renderPin() {
     btnPin.classList.toggle('active', pinned);
@@ -359,16 +422,101 @@
     api.setPinned(pinned);
   });
 
-  function applyOpacity(percent, notify = true) {
-    const p = Math.round(Math.min(100, Math.max(15, percent)));
-    opacityInput.value = String(p);
-    opacityValue.textContent = p + '%';
-    if (notify) api.setOpacity(p / 100);
+  // -------------------------------------------------------------------------
+  // 표시 설정: 배경 불투명도 / 글자 크기 / 기본 글자색 / 메모지 색
+  // -------------------------------------------------------------------------
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const isHex = (v) => /^#[0-9a-fA-F]{6}$/.test(v);
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`;
   }
-  function nudgeOpacity(delta) {
-    applyOpacity(Number(opacityInput.value) + delta);
+
+  function renderSettings() {
+    const root = document.documentElement.style;
+    root.setProperty('--paper-alpha', String(settings.bgOpacity));
+    root.setProperty('--paper-rgb', hexToRgb(settings.paperColor));
+    root.setProperty('--ink', settings.textColor);
+    root.setProperty('--font-size', settings.fontSize + 'px');
+
+    const pct = Math.round(settings.bgOpacity * 100);
+    bgOpacityInput.value = String(pct);
+    bgOpacityValue.textContent = pct + '%';
+    fontSizeInput.value = String(settings.fontSize);
+    fontSizeValue.textContent = settings.fontSize + 'px';
+    textColorInput.value = settings.textColor;
+    paperColorInput.value = settings.paperColor;
   }
-  opacityInput.addEventListener('input', () => applyOpacity(Number(opacityInput.value)));
+
+  function updateSettings(partial, notify = true) {
+    const next = { ...settings };
+    if (typeof partial.bgOpacity === 'number') next.bgOpacity = Math.round(clamp(partial.bgOpacity, 0, 1) * 100) / 100;
+    if (typeof partial.fontSize === 'number') next.fontSize = Math.round(clamp(partial.fontSize, 8, 48));
+    if (isHex(partial.textColor || '')) next.textColor = partial.textColor;
+    if (isHex(partial.paperColor || '')) next.paperColor = partial.paperColor;
+    settings = next;
+    renderSettings();
+    if (notify) api.setSettings(settings);
+  }
+
+  btnSettings.addEventListener('click', () => {
+    settingsPanel.hidden = !settingsPanel.hidden;
+    btnSettings.classList.toggle('active', !settingsPanel.hidden);
+  });
+  bgOpacityInput.addEventListener('input', () => updateSettings({ bgOpacity: Number(bgOpacityInput.value) / 100 }));
+  fontSizeInput.addEventListener('input', () => updateSettings({ fontSize: Number(fontSizeInput.value) }));
+  textColorInput.addEventListener('input', () => updateSettings({ textColor: textColorInput.value }));
+  paperColorInput.addEventListener('input', () => updateSettings({ paperColor: paperColorInput.value }));
+  btnReset.addEventListener('click', () => updateSettings({ ...DEFAULTS }));
+
+  // -------------------------------------------------------------------------
+  // 창 크기 조절 (투명 창은 OS 테두리 리사이즈가 불안정하므로 직접 처리)
+  // -------------------------------------------------------------------------
+  document.querySelectorAll('.rs').forEach((handle) => {
+    handle.addEventListener('pointerdown', async (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const start = await api.getBounds();
+      if (!start) return;
+      const dir = handle.dataset.dir;
+      const sx = e.screenX;
+      const sy = e.screenY;
+      handle.setPointerCapture(e.pointerId);
+      let pending = null;
+
+      const onMove = (ev) => {
+        const dx = ev.screenX - sx;
+        const dy = ev.screenY - sy;
+        const b = { ...start };
+        if (dir.includes('e')) b.width = Math.max(220, start.width + dx);
+        if (dir.includes('s')) b.height = Math.max(160, start.height + dy);
+        if (dir.includes('w')) {
+          b.width = Math.max(220, start.width - dx);
+          b.x = start.x + (start.width - b.width);
+        }
+        if (dir.includes('n')) {
+          b.height = Math.max(160, start.height - dy);
+          b.y = start.y + (start.height - b.height);
+        }
+        pending = b;
+        if (!onMove.raf) {
+          onMove.raf = requestAnimationFrame(() => {
+            onMove.raf = 0;
+            if (pending) api.setBounds(pending);
+          });
+        }
+      };
+      const onUp = () => {
+        handle.removeEventListener('pointermove', onMove);
+        handle.removeEventListener('pointerup', onUp);
+        handle.removeEventListener('pointercancel', onUp);
+        if (pending) api.setBounds(pending);
+      };
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    });
+  });
 
   // -------------------------------------------------------------------------
   // 초기화
@@ -379,15 +527,11 @@
     ensureNotEmpty();
     pinned = state.pinned !== false;
     renderPin();
-    applyOpacity(Math.round((state.opacity || 0.92) * 100), false);
-
-    if (state.platform === 'linux') {
-      opacityInput.title = 'Linux에서는 창 투명도가 지원되지 않을 수 있습니다';
-    }
+    updateSettings({ ...DEFAULTS, ...(state.settings || {}) }, false);
     editor.focus();
   }
   init();
 
   // 테스트용 훅 (브라우저 테스트에서만 사용)
-  window.__memoTest = { insertToggleAtCaret, toggleBold, applyOpacity };
+  window.__memoTest = { insertToggleAtCaret, toggleBold, updateSettings, getSettings: () => settings };
 })();

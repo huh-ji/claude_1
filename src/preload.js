@@ -5,8 +5,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('memo', {
   getState: () => ipcRenderer.invoke('memo:get-state'),
   saveContent: (html) => ipcRenderer.send('memo:save-content', html),
-  setOpacity: (value) => ipcRenderer.send('memo:set-opacity', value),
+  setSettings: (partial) => ipcRenderer.send('memo:set-settings', partial),
   setPinned: (flag) => ipcRenderer.send('memo:set-pinned', flag),
+  getBounds: () => ipcRenderer.invoke('memo:get-bounds'),
+  setBounds: (bounds) => ipcRenderer.send('memo:set-bounds', bounds),
   minimize: () => ipcRenderer.send('memo:minimize'),
   close: () => ipcRenderer.send('memo:close'),
 });

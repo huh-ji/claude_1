@@ -5,23 +5,37 @@ const fs = require('fs');
 const path = require('path');
 
 // ---------------------------------------------------------------------------
-// 영구 저장 (메모 내용 / 창 위치·크기 / 투명도 / 고정 여부)
+// 영구 저장 (메모 내용 / 창 위치·크기 / 표시 설정 / 고정 여부)
 // ---------------------------------------------------------------------------
 const STATE_FILE = () => path.join(app.getPath('userData'), 'state.json');
 
+const MIN_WIDTH = 220;
+const MIN_HEIGHT = 160;
+
+const DEFAULT_SETTINGS = {
+  bgOpacity: 0.92, // 0(완전 투명) ~ 1(불투명) - 메모지 배경에만 적용, 글자는 항상 선명
+  fontSize: 14, // px
+  textColor: '#2b2b2b',
+  paperColor: '#fff8c6',
+};
+
 const DEFAULT_STATE = {
   bounds: { width: 360, height: 420 },
-  opacity: 0.92,
   pinned: true,
   content: '',
+  settings: { ...DEFAULT_SETTINGS },
 };
 
 function loadState() {
   try {
-    const raw = fs.readFileSync(STATE_FILE(), 'utf8');
-    return { ...DEFAULT_STATE, ...JSON.parse(raw) };
+    const raw = JSON.parse(fs.readFileSync(STATE_FILE(), 'utf8'));
+    const state = { ...DEFAULT_STATE, ...raw, settings: { ...DEFAULT_SETTINGS, ...(raw.settings || {}) } };
+    // 1.0 버전 호환: 창 전체 투명도 값을 배경 투명도로 옮김
+    if (typeof raw.opacity === 'number' && !raw.settings) state.settings.bgOpacity = raw.opacity;
+    delete state.opacity;
+    return state;
   } catch {
-    return { ...DEFAULT_STATE };
+    return { ...DEFAULT_STATE, settings: { ...DEFAULT_SETTINGS } };
   }
 }
 
@@ -62,6 +76,23 @@ function clampBounds(bounds) {
   return visible ? bounds : { width, height };
 }
 
+const isHexColor = (v) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+
+function sanitizeSettings(input) {
+  const s = { ...state.settings };
+  if (input && typeof input === 'object') {
+    if (typeof input.bgOpacity === 'number' && Number.isFinite(input.bgOpacity)) {
+      s.bgOpacity = Math.min(1, Math.max(0, input.bgOpacity));
+    }
+    if (typeof input.fontSize === 'number' && Number.isFinite(input.fontSize)) {
+      s.fontSize = Math.min(48, Math.max(8, Math.round(input.fontSize)));
+    }
+    if (isHexColor(input.textColor)) s.textColor = input.textColor;
+    if (isHexColor(input.paperColor)) s.paperColor = input.paperColor;
+  }
+  return s;
+}
+
 // ---------------------------------------------------------------------------
 // 창 생성
 // ---------------------------------------------------------------------------
@@ -82,13 +113,15 @@ function createWindow() {
 
   win = new BrowserWindow({
     ...bounds,
-    minWidth: 220,
-    minHeight: 160,
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     frame: false,
+    transparent: true, // 배경 투명도 0까지 지원 (글자는 그대로 보임)
+    hasShadow: false,
     show: false,
     alwaysOnTop: state.pinned,
     skipTaskbar: false,
-    backgroundColor: '#fff8c6',
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -101,7 +134,6 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'index.html'));
 
   win.once('ready-to-show', () => {
-    win.setOpacity(state.opacity);
     applyAlwaysOnTop(state.pinned);
     win.show();
   });
@@ -130,8 +162,9 @@ function createWindow() {
 // ---------------------------------------------------------------------------
 ipcMain.handle('memo:get-state', () => ({
   content: state.content,
-  opacity: state.opacity,
   pinned: state.pinned,
+  settings: state.settings,
+  defaults: DEFAULT_SETTINGS,
   platform: process.platform,
 }));
 
@@ -141,10 +174,8 @@ ipcMain.on('memo:save-content', (_e, html) => {
   scheduleSave();
 });
 
-ipcMain.on('memo:set-opacity', (_e, value) => {
-  const v = Math.min(1, Math.max(0.15, Number(value) || 1));
-  state.opacity = v;
-  if (win) win.setOpacity(v);
+ipcMain.on('memo:set-settings', (_e, partial) => {
+  state.settings = sanitizeSettings(partial);
   scheduleSave();
 });
 
@@ -152,6 +183,20 @@ ipcMain.on('memo:set-pinned', (_e, flag) => {
   state.pinned = Boolean(flag);
   applyAlwaysOnTop(state.pinned);
   scheduleSave();
+});
+
+// 투명 창은 OS 기본 테두리 리사이즈가 불안정하므로 렌더러의 리사이즈 핸들에서 직접 크기를 조정
+ipcMain.handle('memo:get-bounds', () => (win ? win.getBounds() : null));
+ipcMain.on('memo:set-bounds', (_e, b) => {
+  if (!win || !b) return;
+  const next = {
+    x: Math.round(Number(b.x)),
+    y: Math.round(Number(b.y)),
+    width: Math.max(MIN_WIDTH, Math.round(Number(b.width))),
+    height: Math.max(MIN_HEIGHT, Math.round(Number(b.height))),
+  };
+  if (Object.values(next).some((v) => !Number.isFinite(v))) return;
+  win.setBounds(next);
 });
 
 ipcMain.on('memo:minimize', () => win && win.minimize());

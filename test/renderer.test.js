@@ -11,10 +11,17 @@ const { chromium } = require('playwright');
   await page.exposeFunction('__recordSave', (html) => saved.push(html));
   await page.addInitScript(() => {
     window.memo = {
-      getState: async () => ({ content: '<div>저장된 메모</div>', opacity: 0.8, pinned: true, platform: 'test' }),
+      getState: async () => ({
+        content: '<div>저장된 메모</div>',
+        pinned: true,
+        settings: { bgOpacity: 0.8, fontSize: 16, textColor: '#112233', paperColor: '#ffffff' },
+        platform: 'test',
+      }),
       saveContent: (html) => window.__recordSave(html),
-      setOpacity: (v) => { window.__opacity = v; },
+      setSettings: (s) => { window.__settings = s; },
       setPinned: (f) => { window.__pinned = f; },
+      getBounds: async () => ({ x: 100, y: 100, width: 380, height: 420 }),
+      setBounds: (b) => { window.__bounds = b; },
       minimize: () => {},
       close: () => {},
     };
@@ -22,9 +29,21 @@ const { chromium } = require('playwright');
   await page.goto('file://' + path.resolve(__dirname, '../src/index.html'));
   await page.waitForFunction(() => document.querySelector('#editor').textContent.includes('저장된 메모'));
 
-  // 1) 저장된 내용 / 투명도 복원
-  assert.strictEqual(await page.inputValue('#opacity'), '80');
-  assert.strictEqual(await page.textContent('#opacity-value'), '80%');
+  // 1) 저장된 내용 / 표시 설정 복원 (CSS 변수까지)
+  assert.strictEqual(await page.inputValue('#bg-opacity'), '80');
+  assert.strictEqual(await page.textContent('#bg-opacity-value'), '80%');
+  assert.strictEqual(await page.inputValue('#font-size'), '16');
+  const css = await page.evaluate(() => {
+    const st = getComputedStyle(document.documentElement);
+    return {
+      alpha: st.getPropertyValue('--paper-alpha').trim(),
+      rgb: st.getPropertyValue('--paper-rgb').trim(),
+      ink: st.getPropertyValue('--ink').trim(),
+      font: getComputedStyle(document.getElementById('editor')).fontSize,
+      paperBg: getComputedStyle(document.getElementById('paper')).backgroundColor,
+    };
+  });
+  assert.deepStrictEqual(css, { alpha: '0.8', rgb: '255, 255, 255', ink: '#112233', font: '16px', paperBg: 'rgba(255, 255, 255, 0.8)' });
 
   // 2) 굵게
   await page.click('#editor');
@@ -81,14 +100,59 @@ const { chromium } = require('playwright');
   await page.keyboard.press('Backspace');
   assert.strictEqual(await page.$$eval('#editor .toggle', (t) => t.length), 1, '빈 토글은 Backspace 로 해제');
 
-  // 7) 투명도 슬라이더 / 단축키 / 고정 버튼
-  await page.fill('#opacity', '50');
-  assert.strictEqual(await page.evaluate(() => window.__opacity), 0.5);
+  // 7) 설정 패널: 배경 불투명도 0 까지 / 글자 크기 / 기본 색 / 초기화 / 단축키 / 고정 버튼
+  assert.strictEqual(await page.isVisible('#settings'), false);
+  await page.click('#btn-settings');
+  assert.strictEqual(await page.isVisible('#settings'), true);
+  await page.fill('#bg-opacity', '0');
+  assert.strictEqual(await page.evaluate(() => window.__settings.bgOpacity), 0);
+  assert.strictEqual(await page.$eval('#paper', (p) => getComputedStyle(p).backgroundColor), 'rgba(255, 255, 255, 0)', '배경 0% 는 완전 투명');
+  const barAlpha = await page.$eval('#titlebar', (t) => getComputedStyle(t).backgroundImage + getComputedStyle(t).backgroundColor);
+  assert.ok(barAlpha.includes('0.35'), '상단 바는 최소 불투명도를 유지해야 함: ' + barAlpha);
+  await page.fill('#font-size', '24');
+  assert.strictEqual(await page.$eval('#editor', (e) => getComputedStyle(e).fontSize), '24px');
+  await page.$eval('#text-color', (i) => { i.value = '#ff0000'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  assert.strictEqual(await page.$eval('#editor', (e) => getComputedStyle(e).color), 'rgb(255, 0, 0)');
+  await page.$eval('#paper-color', (i) => { i.value = '#000000'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.fill('#bg-opacity', '100');
+  assert.strictEqual(await page.$eval('#paper', (p) => getComputedStyle(p).backgroundColor), 'rgb(0, 0, 0)');
   await page.click('#editor');
   await page.keyboard.press('Control+Shift+ArrowDown');
-  assert.strictEqual(await page.evaluate(() => window.__opacity), 0.45);
+  assert.strictEqual(await page.evaluate(() => window.__settings.bgOpacity), 0.95);
+  await page.keyboard.press('Control+=');
+  await page.keyboard.press('Control+=');
+  assert.strictEqual(await page.evaluate(() => window.__settings.fontSize), 26);
+  await page.keyboard.press('Control+-');
+  assert.strictEqual(await page.evaluate(() => window.__settings.fontSize), 25);
+  await page.click('#btn-reset');
+  assert.deepStrictEqual(await page.evaluate(() => window.__settings), { bgOpacity: 0.92, fontSize: 14, textColor: '#2b2b2b', paperColor: '#fff8c6' });
   await page.click('#btn-pin');
   assert.strictEqual(await page.evaluate(() => window.__pinned), false);
+
+  // 7b) 선택 영역 글자색 / 형광펜 (선택이 색상 선택기로 포커스가 옮겨가도 유지되어야 함)
+  await page.click('#editor');
+  await page.keyboard.press('Control+End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('색칠');
+  await page.keyboard.press('Shift+Home');
+  await page.dispatchEvent('#color-text', 'pointerdown');
+  await page.$eval('#color-text', (i) => { i.focus(); i.value = '#0000ff'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  assert.match(await page.innerHTML('#editor'), /<span style="color: rgb\(0, 0, 255\);">색칠<\/span>/, '글자색 적용: ' + await page.innerHTML('#editor'));
+  await page.dispatchEvent('#color-hilite', 'pointerdown');
+  await page.$eval('#color-hilite', (i) => { i.focus(); i.value = '#00ff00'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  assert.match(await page.innerHTML('#editor'), /background-color: rgb\(0, 255, 0\)/, '형광펜 적용: ' + await page.innerHTML('#editor'));
+
+  // 7c) 리사이즈 핸들 → setBounds 호출 (오른쪽 아래 모서리를 +40,+30 드래그)
+  const se = await page.$('.rs-se');
+  const box = await se.boundingBox();
+  await page.mouse.move(box.x + 5, box.y + 5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 25, box.y + 20);
+  await page.mouse.move(box.x + 45, box.y + 35);
+  await page.waitForTimeout(50);
+  await page.mouse.up();
+  const b = await page.evaluate(() => window.__bounds);
+  assert.ok(b && b.width === 420 && b.height === 450 && b.x === 100 && b.y === 100, '리사이즈 결과: ' + JSON.stringify(b));
 
   // 8) 붙여넣기는 서식 제거
   await page.click('#editor');

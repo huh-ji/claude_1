@@ -7,28 +7,63 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header id="titlebar">
-    <span class="grip" title="드래그해서 이동"></span>
+  <div id="paper">
+    <header id="titlebar">
+      <span class="grip" title="드래그해서 이동"></span>
 
-    <div class="tools">
-      <button id="btn-bold" class="tool" title="굵게 (Ctrl+B)"><b>B</b></button>
-      <button id="btn-toggle" class="tool" title="토글 블록 (Ctrl+Shift+T 또는 줄 앞에 '&gt; ' 입력)">▸</button>
-    </div>
+      <div class="tools">
+        <button id="btn-bold" class="tool" title="굵게 (Ctrl+B)"><b>B</b></button>
+        <button id="btn-toggle" class="tool" title="토글 블록 (Ctrl+Shift+T 또는 줄 앞에 '&gt; ' 입력)">▸</button>
+        <label class="tool color-tool" title="선택한 글자 색">
+          <span class="color-glyph">A</span>
+          <input id="color-text" type="color" value="#d9242b" />
+        </label>
+        <label class="tool color-tool" title="선택한 글자 배경색 (형광펜)">
+          <span class="color-glyph hilite">A</span>
+          <input id="color-hilite" type="color" value="#fff176" />
+        </label>
+      </div>
 
-    <label class="opacity" title="투명도 (Ctrl+Shift+↑/↓)">
-      <span class="icon">◐</span>
-      <input id="opacity" type="range" min="15" max="100" step="1" value="92" />
-      <span id="opacity-value">92%</span>
-    </label>
+      <div class="window-controls">
+        <button id="btn-settings" class="tool" title="설정 (투명도 · 글자 크기 · 기본 색상)">⚙</button>
+        <button id="btn-pin" class="tool pin" title="항상 위에 고정 켜기/끄기">📌</button>
+        <button id="btn-min" class="tool" title="최소화">–</button>
+        <button id="btn-close" class="tool close" title="닫기">✕</button>
+      </div>
+    </header>
 
-    <div class="window-controls">
-      <button id="btn-pin" class="tool pin" title="항상 위에 고정 켜기/끄기">📌</button>
-      <button id="btn-min" class="tool" title="최소화">–</button>
-      <button id="btn-close" class="tool close" title="닫기">✕</button>
-    </div>
-  </header>
+    <section id="settings" hidden>
+      <label class="row">
+        <span class="name">배경 불투명도</span>
+        <input id="bg-opacity" type="range" min="0" max="100" step="1" value="92" />
+        <span id="bg-opacity-value" class="val">92%</span>
+      </label>
+      <label class="row">
+        <span class="name">글자 크기</span>
+        <input id="font-size" type="range" min="8" max="48" step="1" value="14" />
+        <span id="font-size-value" class="val">14px</span>
+      </label>
+      <div class="row">
+        <span class="name">기본 글자색</span>
+        <input id="text-color" type="color" value="#2b2b2b" />
+        <span class="name">메모지 색</span>
+        <input id="paper-color" type="color" value="#fff8c6" />
+        <button id="btn-reset" class="small" title="표시 설정을 기본값으로">초기화</button>
+      </div>
+      <p class="hint">Ctrl+Shift+↑/↓ 투명도 · Ctrl + / Ctrl − 글자 크기 · Ctrl+Shift+M 보이기/숨기기</p>
+    </section>
 
-  <main id="editor" contenteditable="true" spellcheck="false" data-placeholder="메모를 입력하세요…  ('> ' + 제목으로 토글 블록)"></main>
+    <main id="editor" contenteditable="true" spellcheck="false" data-placeholder="메모를 입력하세요…  ('> ' + 제목으로 토글 블록)"></main>
+
+    <div class="rs rs-n" data-dir="n"></div>
+    <div class="rs rs-s" data-dir="s"></div>
+    <div class="rs rs-e" data-dir="e"></div>
+    <div class="rs rs-w" data-dir="w"></div>
+    <div class="rs rs-ne" data-dir="ne"></div>
+    <div class="rs rs-nw" data-dir="nw"></div>
+    <div class="rs rs-se" data-dir="se"></div>
+    <div class="rs rs-sw" data-dir="sw"></div>
+  </div>
 
   <script src="renderer.js"></script>
 </body>

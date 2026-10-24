@@ -9,8 +9,11 @@ Electron 으로 만들어져 Windows / macOS / Linux 에서 동작합니다.
 | --- | --- |
 | 항상 위에 표시 | 기본 켜짐. 📌 버튼으로 끄고 켤 수 있음 |
 | 위치 이동 / 크기 조절 | 상단 바를 드래그해서 이동, 창 가장자리를 끌어 크기 조절 (위치·크기는 자동 저장) |
-| 투명도 조절 | 상단 바의 슬라이더 (15% ~ 100%) 또는 `Ctrl+Shift+↑ / ↓` |
+| 배경 투명도 | ⚙ 설정 패널의 슬라이더 (0% = 완전 투명 ~ 100%) 또는 `Ctrl+Shift+↑ / ↓`. 글자는 항상 선명하게 유지되고 메모지 배경만 투명해짐 |
+| 글자 크기 | ⚙ 설정 패널의 슬라이더 (8 ~ 48px) 또는 `Ctrl + / Ctrl −` (`Ctrl 0` 으로 기본값) |
 | 글씨 굵게 | **B** 버튼 또는 `Ctrl+B` |
+| 글자색 / 형광펜 | 글자를 선택한 뒤 상단 바의 **A** (글자색) · **형광펜** 버튼으로 색 선택 |
+| 기본 글자색 / 메모지 색 | ⚙ 설정 패널에서 메모 전체의 기본 글자색과 메모지(배경) 색 변경, 초기화 버튼 제공 |
 | 토글 블록 (노션 스타일) | 줄 맨 앞에 `> ` 입력, ▸ 버튼, 또는 `Ctrl+Shift+T`. 화살표를 클릭하면 접기/펼치기 |
 | 자동 저장 | 입력할 때마다 내용·접힘 상태·투명도·창 위치를 자동 저장, 다음 실행 시 복원 |
 | 빠른 호출 | `Ctrl+Shift+M` (macOS: `Cmd+Shift+M`) 으로 어디서든 메모장 보이기/숨기기 |
@@ -22,7 +25,20 @@ Electron 으로 만들어져 Windows / macOS / Linux 에서 동작합니다.
 - 비어 있는 토글 제목에서 `Backspace` → 일반 줄로 되돌리기
 - 본문 첫 줄 맨 앞에서 `Backspace` → 제목 끝으로 이동
 
-## 실행
+## Windows 에서 바로 쓰기 (exe 내려받기)
+
+GitHub Actions 가 Windows 용 실행 파일을 빌드해 **Releases** 페이지에 올립니다.
+<https://github.com/huh-ji/claude_1/releases/latest>
+
+- `FloatMemo-<버전>-Portable.exe` : 설치 없이 다운로드 폴더에서 바로 더블클릭하면 실행됩니다.
+- `FloatMemo-<버전>-Setup.exe` : 설치 버전 (바탕화면 바로가기 생성).
+
+코드 서명이 되어 있지 않아 처음 실행할 때 Windows SmartScreen 경고가 뜰 수 있습니다.
+**추가 정보 → 실행** 을 누르면 됩니다.
+
+새 빌드가 필요하면 GitHub 의 **Actions → Build Windows exe → Run workflow** 를 누르거나, `v*` 태그를 푸시하면 됩니다.
+
+## 소스로 실행
 
 ```bash
 npm install
@@ -49,19 +65,24 @@ Playwright 가 없다면 `npm install -D playwright` 후 `npx playwright install
 
 ## 알려진 제한
 
-- **Linux**: Electron 이 창 투명도(`setOpacity`)를 지원하지 않아 슬라이더가 동작하지 않습니다. Windows / macOS 에서는 정상 동작합니다.
+- 배경 투명도는 창 자체를 투명하게 만드는 방식이라 **Linux** 에서는 컴포지터 설정에 따라 투명이 적용되지 않을 수 있습니다. Windows / macOS 는 정상 동작합니다.
+- 배경을 0% 로 하면 상단 바만 희미하게(최소 35%) 남습니다. 이동과 크기 조절을 할 수 있도록 일부러 남겨둔 것입니다.
 - 다른 프로그램이 **전체 화면(배타적 풀스크린)** 모드일 때는 운영체제 정책상 그 위에 뜨지 않을 수 있습니다. 일반 창·최대화 창 위에는 표시됩니다.
 - 저장 위치: 운영체제의 앱 데이터 폴더 (`%APPDATA%\float-memo\state.json`, `~/Library/Application Support/float-memo/state.json`, `~/.config/float-memo/state.json`)
 
 ## 구조
 
 ```
+build/
+  icon.png, icon.ico   앱 아이콘
+.github/workflows/
+  build-windows.yml    Windows exe 빌드 + Release 업로드
 src/
-  main.js      Electron 메인 프로세스 (창 생성, 항상 위, 투명도, 상태 저장)
+  main.js      Electron 메인 프로세스 (투명 창, 항상 위, 설정·상태 저장, 크기 조절)
   preload.js   렌더러 ↔ 메인 안전한 브리지 (contextBridge)
   index.html   UI 마크업
   style.css    스타일 (포스트잇 느낌, 토글 블록)
-  renderer.js  에디터 로직 (굵게, 토글 블록, 자동 저장)
+  renderer.js  에디터 로직 (굵게, 토글 블록, 글자색/형광펜, 설정 패널, 자동 저장)
 test/
   renderer.test.js  Playwright 기반 에디터 테스트
 ```

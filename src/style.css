@@ -1,10 +1,12 @@
 :root {
-  --paper: #fff8c6;
-  --paper-edge: #f3e9a4;
-  --ink: #2b2b2b;
-  --muted: #8a8358;
+  --paper-rgb: 255, 248, 198;     /* 메모지 색 (JS 가 설정) */
+  --paper-alpha: 0.92;            /* 배경 불투명도 0 ~ 1 (JS 가 설정) */
+  --ink: #2b2b2b;                 /* 기본 글자색 (JS 가 설정) */
+  --font-size: 14px;              /* 글자 크기 (JS 가 설정) */
+  --muted: rgba(0, 0, 0, 0.45);
   --accent: #d9a400;
-  --bar: rgba(0, 0, 0, 0.06);
+  /* 배경을 완전히 투명하게 해도 상단 바는 잡을 수 있도록 최소 불투명도를 유지 */
+  --bar-alpha: max(var(--paper-alpha), 0.35);
 }
 
 * { box-sizing: border-box; }
@@ -12,18 +14,23 @@
 html, body {
   margin: 0;
   height: 100%;
-  background: var(--paper);
+  background: transparent;
   color: var(--ink);
   font-family: "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
-  font-size: 14px;
+  font-size: var(--font-size);
   overflow: hidden;
   user-select: none;
 }
 
-body {
+#paper {
+  position: relative;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--paper-edge);
+  height: 100%;
+  border-radius: 8px;
+  background: rgba(var(--paper-rgb), var(--paper-alpha));
+  border: 1px solid rgba(0, 0, 0, calc(var(--paper-alpha) * 0.18));
+  overflow: hidden;
 }
 
 /* ---------- 타이틀바 (드래그 영역) ---------- */
@@ -31,10 +38,13 @@ body {
   -webkit-app-region: drag;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   height: 34px;
   padding: 0 6px;
-  background: var(--bar);
+  font-size: 14px;
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.06)),
+    rgba(var(--paper-rgb), var(--bar-alpha));
   flex: 0 0 auto;
 }
 
@@ -48,42 +58,30 @@ body {
 
 #titlebar .tools,
 #titlebar .window-controls,
-#titlebar .opacity,
 #titlebar button,
+#titlebar label,
 #titlebar input {
   -webkit-app-region: no-drag;
 }
 
 #titlebar .tools { display: flex; gap: 2px; }
-#titlebar .opacity {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 11px;
-}
-#titlebar .opacity input[type="range"] {
-  width: 70px;
-  height: 4px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-#titlebar .window-controls { display: flex; gap: 2px; }
+#titlebar .window-controls { display: flex; gap: 2px; margin-left: auto; }
 
 .tool {
+  position: relative;
   width: 26px;
   height: 26px;
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: var(--ink);
+  color: #2b2b2b;
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
 }
 .tool:hover { background: rgba(0, 0, 0, 0.09); }
 .tool:active { background: rgba(0, 0, 0, 0.16); }
@@ -92,8 +90,71 @@ body {
 .tool.pin.active { filter: none; opacity: 1; background: transparent; }
 .tool.close:hover { background: #e5533d; color: #fff; }
 
+/* 색상 선택 버튼: 글자 아래에 현재 색 띠 */
+.color-tool { overflow: hidden; }
+.color-tool .color-glyph {
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
+  padding-bottom: 3px;
+  border-bottom: 3px solid var(--swatch, #d9242b);
+  pointer-events: none;
+}
+.color-tool .color-glyph.hilite {
+  border-bottom: 0;
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: var(--swatch, #fff176);
+}
+.color-tool input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+  padding: 0;
+}
+
+/* ---------- 설정 패널 ---------- */
+#settings {
+  flex: 0 0 auto;
+  padding: 8px 10px 6px;
+  font-size: 12px;
+  color: #2b2b2b;
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.035), rgba(0, 0, 0, 0.035)),
+    rgba(var(--paper-rgb), var(--bar-alpha));
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+#settings .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+#settings .name { flex: 0 0 auto; min-width: 74px; color: #2b2b2b; }
+#settings .val { flex: 0 0 40px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+#settings input[type="range"] { flex: 1 1 auto; min-width: 0; height: 4px; accent-color: var(--accent); cursor: pointer; }
+#settings input[type="color"] {
+  width: 28px; height: 22px; padding: 0; border: 1px solid rgba(0,0,0,.2);
+  border-radius: 4px; background: transparent; cursor: pointer;
+}
+#settings .small {
+  margin-left: auto;
+  border: 1px solid rgba(0,0,0,.2);
+  background: rgba(255,255,255,.4);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+#settings .hint { margin: 6px 0 0; font-size: 11px; color: var(--muted); }
+
 /* ---------- 편집 영역 ---------- */
 #editor {
+  position: relative;
   flex: 1 1 auto;
   padding: 12px 14px 20px;
   overflow-y: auto;
@@ -102,8 +163,8 @@ body {
   user-select: text;
   cursor: text;
   word-break: break-word;
+  color: var(--ink);
 }
-#editor:empty::before,
 #editor.is-empty::before {
   content: attr(data-placeholder);
   color: var(--muted);
@@ -153,9 +214,19 @@ body {
 .toggle-title:empty::before { content: "토글"; color: var(--muted); }
 .toggle-body {
   grid-area: body;
-  padding-left: 2px;
   border-left: 1px dashed rgba(0,0,0,.12);
   margin-left: -11px;
   padding-left: 11px;
 }
 .toggle[data-open="false"] .toggle-body { display: none; }
+
+/* ---------- 리사이즈 핸들 ---------- */
+.rs { position: absolute; z-index: 10; -webkit-app-region: no-drag; }
+.rs-n  { top: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.rs-s  { bottom: 0; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.rs-e  { right: 0; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.rs-w  { left: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.rs-ne { top: 0; right: 0; width: 12px; height: 12px; cursor: nesw-resize; }
+.rs-nw { top: 0; left: 0; width: 12px; height: 12px; cursor: nwse-resize; }
+.rs-se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+.rs-sw { bottom: 0; left: 0; width: 12px; height: 12px; cursor: nesw-resize; }

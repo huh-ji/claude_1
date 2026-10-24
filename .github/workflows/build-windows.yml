@@ -1,0 +1,54 @@
+name: Build Windows exe
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installer and portable exe
+        run: npx electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Read version
+        id: meta
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FloatMemo-windows-${{ steps.meta.outputs.version }}
+          path: dist/*.exe
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          name: FloatMemo v${{ steps.meta.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: dist/*.exe
+          body: |
+            Windows 실행 파일
+            - `FloatMemo-*-Setup.exe` : 설치 버전
+            - `FloatMemo-*-Portable.exe` : 설치 없이 바로 실행
+
+            서명되지 않은 파일이라 처음 실행 시 Windows SmartScreen 경고가 나올 수 있습니다.
+            "추가 정보" → "실행" 을 누르면 됩니다.
