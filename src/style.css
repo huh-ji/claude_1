@@ -230,3 +230,23 @@ html, body {
 .rs-nw { top: 0; left: 0; width: 12px; height: 12px; cursor: nwse-resize; }
 .rs-se { bottom: 0; right: 0; width: 14px; height: 14px; cursor: nwse-resize; }
 .rs-sw { bottom: 0; left: 0; width: 12px; height: 12px; cursor: nesw-resize; }
+
+/* ---------- 내용 접기 (제목줄만 남김) ---------- */
+.tool.collapse .chev {
+  width: 8px;
+  height: 8px;
+  border-left: 2px solid currentColor;
+  border-top: 2px solid currentColor;
+  transform: translateY(2px) rotate(45deg);   /* ▲ : 접기 */
+  transition: transform .12s ease;
+}
+body.collapsed .tool.collapse .chev { transform: translateY(-2px) rotate(225deg); } /* ▼ : 펼치기 */
+body.collapsed .tool.collapse { background: rgba(217, 164, 0, 0.35); }
+
+body.collapsed #settings,
+body.collapsed #editor,
+body.collapsed .rs-n, body.collapsed .rs-s,
+body.collapsed .rs-ne, body.collapsed .rs-nw,
+body.collapsed .rs-se, body.collapsed .rs-sw {
+  display: none !important;
+}

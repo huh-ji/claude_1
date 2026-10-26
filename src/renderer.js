@@ -5,6 +5,7 @@
   const btnBold = document.getElementById('btn-bold');
   const btnToggle = document.getElementById('btn-toggle');
   const btnPin = document.getElementById('btn-pin');
+  const btnCollapse = document.getElementById('btn-collapse');
   const btnMin = document.getElementById('btn-min');
   const btnClose = document.getElementById('btn-close');
   const btnSettings = document.getElementById('btn-settings');
@@ -25,6 +26,7 @@
     saveContent: () => {},
     setSettings: () => {},
     setPinned: () => {},
+    setCollapsed: () => {},
     getBounds: async () => null,
     setBounds: () => {},
     minimize: () => {},
@@ -423,6 +425,22 @@
   });
 
   // -------------------------------------------------------------------------
+  // 내용 접기: 창 높이를 제목줄만큼 줄여 뒤쪽 화면을 클릭할 수 있게 함 (항상 위 고정은 유지)
+  // -------------------------------------------------------------------------
+  let collapsed = false;
+  function renderCollapsed() {
+    document.body.classList.toggle('collapsed', collapsed);
+    btnCollapse.title = collapsed ? '내용 펼치기' : '내용 접기 (제목줄만 남기고 맨 위에 유지)';
+  }
+  function setCollapsed(flag) {
+    collapsed = Boolean(flag);
+    renderCollapsed();
+    api.setCollapsed(collapsed);
+    if (!collapsed) editor.focus();
+  }
+  btnCollapse.addEventListener('click', () => setCollapsed(!collapsed));
+
+  // -------------------------------------------------------------------------
   // 표시 설정: 배경 불투명도 / 글자 크기 / 기본 글자색 / 메모지 색
   // -------------------------------------------------------------------------
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -527,6 +545,8 @@
     ensureNotEmpty();
     pinned = state.pinned !== false;
     renderPin();
+    collapsed = state.collapsed === true;
+    renderCollapsed();
     updateSettings({ ...DEFAULTS, ...(state.settings || {}) }, false);
     editor.focus();
   }

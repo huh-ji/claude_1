@@ -20,6 +20,7 @@ const { chromium } = require('playwright');
       saveContent: (html) => window.__recordSave(html),
       setSettings: (s) => { window.__settings = s; },
       setPinned: (f) => { window.__pinned = f; },
+      setCollapsed: (f) => { window.__collapsed = f; },
       getBounds: async () => ({ x: 100, y: 100, width: 380, height: 420 }),
       setBounds: (b) => { window.__bounds = b; },
       minimize: () => {},
@@ -153,6 +154,20 @@ const { chromium } = require('playwright');
   await page.mouse.up();
   const b = await page.evaluate(() => window.__bounds);
   assert.ok(b && b.width === 420 && b.height === 450 && b.x === 100 && b.y === 100, '리사이즈 결과: ' + JSON.stringify(b));
+
+  // 7d) 내용 접기 버튼: 제목줄만 남기고 내용/설정 숨김, 다시 누르면 펼침
+  assert.strictEqual(await page.isVisible('#editor'), true);
+  await page.click('#btn-collapse');
+  assert.strictEqual(await page.evaluate(() => window.__collapsed), true);
+  assert.strictEqual(await page.isVisible('#editor'), false, '접으면 내용이 숨겨져야 함');
+  assert.strictEqual(await page.isVisible('#settings'), false, '접으면 설정 패널도 숨겨져야 함');
+  assert.strictEqual(await page.isVisible('#titlebar'), true, '제목줄은 남아야 함');
+  assert.strictEqual(await page.isVisible('.rs-se'), false, '접힌 상태에서는 높이 조절 핸들 숨김');
+  assert.strictEqual(await page.isVisible('.rs-e'), true, '접힌 상태에서도 너비 조절 가능');
+  await page.click('#btn-collapse');
+  assert.strictEqual(await page.evaluate(() => window.__collapsed), false);
+  assert.strictEqual(await page.isVisible('#editor'), true);
+  assert.strictEqual(await page.isVisible('#settings'), true, '설정 패널이 열려 있었다면 다시 보여야 함');
 
   // 8) 붙여넣기는 서식 제거
   await page.click('#editor');

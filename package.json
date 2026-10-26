@@ -1,6 +1,6 @@
 {
   "name": "float-memo",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "항상 다른 프로그램 위에 떠 있는 투명도 조절 메모장 (굵게 / 토글 블록 지원)",
   "main": "src/main.js",
   "author": "",

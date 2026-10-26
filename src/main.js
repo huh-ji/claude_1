@@ -11,6 +11,7 @@ const STATE_FILE = () => path.join(app.getPath('userData'), 'state.json');
 
 const MIN_WIDTH = 220;
 const MIN_HEIGHT = 160;
+const COLLAPSED_HEIGHT = 36; // 제목줄(34px) + 테두리
 
 const DEFAULT_SETTINGS = {
   bgOpacity: 0.92, // 0(완전 투명) ~ 1(불투명) - 메모지 배경에만 적용, 글자는 항상 선명
@@ -22,6 +23,7 @@ const DEFAULT_SETTINGS = {
 const DEFAULT_STATE = {
   bounds: { width: 360, height: 420 },
   pinned: true,
+  collapsed: false, // 내용 접기: 제목줄만 남긴 상태 (state.bounds 에는 펼친 크기를 보관)
   content: '',
   settings: { ...DEFAULT_SETTINGS },
 };
@@ -107,14 +109,42 @@ function applyAlwaysOnTop(flag) {
   }
 }
 
+// 현재 창 크기를 state.bounds 에 기록. 접힌 상태에서는 높이를 건드리지 않아 펼칠 때 원래 높이로 돌아감
+function rememberBounds() {
+  if (!win || win.isMinimized()) return;
+  const b = win.getBounds();
+  state.bounds = state.collapsed ? { ...b, height: state.bounds.height } : b;
+}
+
+function setCollapsed(flag) {
+  if (!win) return;
+  flag = Boolean(flag);
+  if (flag === state.collapsed) return;
+  rememberBounds();
+  state.collapsed = flag;
+  const b = win.getBounds();
+  if (flag) {
+    win.setMinimumSize(MIN_WIDTH, COLLAPSED_HEIGHT);
+    win.setBounds({ ...b, height: COLLAPSED_HEIGHT });
+  } else {
+    // 최소 크기를 먼저 바꾸면 그때 발생하는 resize 이벤트가 저장된 높이를 덮어쓰므로, 높이를 먼저 복원
+    const height = Math.max(MIN_HEIGHT, state.bounds.height || DEFAULT_STATE.bounds.height);
+    win.setBounds({ ...b, height });
+    win.setMinimumSize(MIN_WIDTH, MIN_HEIGHT);
+  }
+  scheduleSave();
+}
+
 function createWindow() {
   state = loadState();
-  const bounds = clampBounds(state.bounds);
+  const bounds = { ...clampBounds(state.bounds) }; // 복사본: state.bounds(펼친 크기)를 건드리지 않도록
+  if (state.collapsed) bounds.height = COLLAPSED_HEIGHT;
 
   win = new BrowserWindow({
     ...bounds,
     minWidth: MIN_WIDTH,
-    minHeight: MIN_HEIGHT,
+    minHeight: state.collapsed ? COLLAPSED_HEIGHT : MIN_HEIGHT,
+    maximizable: false, // 제목줄 더블클릭 / 화면 위로 끌기 시 최대화되지 않도록
     frame: false,
     transparent: true, // 배경 투명도 0까지 지원 (글자는 그대로 보임)
     hasShadow: false,
@@ -138,17 +168,16 @@ function createWindow() {
     win.show();
   });
 
-  const rememberBounds = () => {
-    if (!win || win.isMinimized()) return;
-    state.bounds = win.getBounds();
+  const onBoundsChanged = () => {
+    rememberBounds();
     scheduleSave();
   };
-  win.on('resize', rememberBounds);
-  win.on('move', rememberBounds);
+  win.on('resize', onBoundsChanged);
+  win.on('move', onBoundsChanged);
 
   win.on('close', () => {
     // 한 번도 움직이지 않은 창도 마지막 위치를 기억
-    if (!win.isMinimized()) state.bounds = win.getBounds();
+    rememberBounds();
     saveStateNow();
   });
 
@@ -163,6 +192,7 @@ function createWindow() {
 ipcMain.handle('memo:get-state', () => ({
   content: state.content,
   pinned: state.pinned,
+  collapsed: state.collapsed,
   settings: state.settings,
   defaults: DEFAULT_SETTINGS,
   platform: process.platform,
@@ -185,6 +215,8 @@ ipcMain.on('memo:set-pinned', (_e, flag) => {
   scheduleSave();
 });
 
+ipcMain.on('memo:set-collapsed', (_e, flag) => setCollapsed(flag));
+
 // 투명 창은 OS 기본 테두리 리사이즈가 불안정하므로 렌더러의 리사이즈 핸들에서 직접 크기를 조정
 ipcMain.handle('memo:get-bounds', () => (win ? win.getBounds() : null));
 ipcMain.on('memo:set-bounds', (_e, b) => {
@@ -193,7 +225,7 @@ ipcMain.on('memo:set-bounds', (_e, b) => {
     x: Math.round(Number(b.x)),
     y: Math.round(Number(b.y)),
     width: Math.max(MIN_WIDTH, Math.round(Number(b.width))),
-    height: Math.max(MIN_HEIGHT, Math.round(Number(b.height))),
+    height: state.collapsed ? COLLAPSED_HEIGHT : Math.max(MIN_HEIGHT, Math.round(Number(b.height))),
   };
   if (Object.values(next).some((v) => !Number.isFinite(v))) return;
   win.setBounds(next);
