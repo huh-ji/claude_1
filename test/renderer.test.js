@@ -8,7 +8,8 @@ const { chromium } = require('playwright');
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 380, height: 420 } });
   const saved = [];
-  await page.exposeFunction('__recordSave', (html) => saved.push(html));
+  const titles = [];
+  await page.exposeFunction('__recordSave', (html, title) => { saved.push(html); titles.push(title); });
   await page.addInitScript(() => {
     window.memo = {
       getState: async () => ({
@@ -17,7 +18,9 @@ const { chromium } = require('playwright');
         settings: { bgOpacity: 0.8, fontSize: 16, textColor: '#112233', paperColor: '#ffffff' },
         platform: 'test',
       }),
-      saveContent: (html) => window.__recordSave(html),
+      saveContent: (html, title) => window.__recordSave(html, title),
+      newNote: () => { window.__newNote = (window.__newNote || 0) + 1; },
+      deleteNote: async () => { window.__deleteNote = (window.__deleteNote || 0) + 1; return false; },
       setSettings: (s) => { window.__settings = s; },
       setPinned: (f) => { window.__pinned = f; },
       setCollapsed: (f) => { window.__collapsed = f; },
@@ -168,6 +171,15 @@ const { chromium } = require('playwright');
   assert.strictEqual(await page.evaluate(() => window.__collapsed), false);
   assert.strictEqual(await page.isVisible('#editor'), true);
   assert.strictEqual(await page.isVisible('#settings'), true, '설정 패널이 열려 있었다면 다시 보여야 함');
+
+  // 7e) 여러 메모: + 버튼 / Ctrl+N 은 새 메모, 설정 패널의 삭제 버튼, 저장 시 첫 줄을 제목으로 전달
+  await page.click('#btn-new');
+  await page.click('#editor');
+  await page.keyboard.press('Control+n');
+  assert.strictEqual(await page.evaluate(() => window.__newNote), 2);
+  await page.click('#btn-delete');
+  assert.strictEqual(await page.evaluate(() => window.__deleteNote), 1);
+  assert.strictEqual(titles[titles.length - 1], '저장된 메모', '첫 줄이 제목으로 저장되어야 함');
 
   // 8) 붙여넣기는 서식 제거
   await page.click('#editor');

@@ -17,6 +17,8 @@
   const textColorInput = document.getElementById('text-color');
   const paperColorInput = document.getElementById('paper-color');
   const btnReset = document.getElementById('btn-reset');
+  const btnNew = document.getElementById('btn-new');
+  const btnDelete = document.getElementById('btn-delete');
   const colorTextInput = document.getElementById('color-text');
   const colorHiliteInput = document.getElementById('color-hilite');
 
@@ -24,6 +26,8 @@
   const api = window.memo || {
     getState: async () => ({ content: '', pinned: true, settings: {}, defaults: {}, platform: 'web' }),
     saveContent: () => {},
+    newNote: () => {},
+    deleteNote: async () => false,
     setSettings: () => {},
     setPinned: () => {},
     setCollapsed: () => {},
@@ -214,6 +218,12 @@
       toggleBold();
       return;
     }
+    if (mod && !e.shiftKey && e.key.toLowerCase() === 'n') {
+      e.preventDefault();
+      flushSave();
+      api.newNote();
+      return;
+    }
     if (mod && e.shiftKey && e.key.toLowerCase() === 't') {
       e.preventDefault();
       insertToggleAtCaret();
@@ -354,20 +364,29 @@
   // -------------------------------------------------------------------------
   // 저장
   // -------------------------------------------------------------------------
+  // 트레이 메뉴에 보일 제목: 첫 번째로 글자가 있는 줄 (토글이면 토글 제목)
+  function noteTitle() {
+    for (const el of editor.children) {
+      const src = el.classList && el.classList.contains('toggle') ? el.querySelector('.toggle-title') : el;
+      const text = (src ? src.textContent : '').replace(/\s+/g, ' ').trim();
+      if (text) return text.slice(0, 60);
+    }
+    return '';
+  }
+
   let saveTimer = null;
+  function flushSave() {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    api.saveContent(editor.innerHTML, noteTitle());
+  }
   function scheduleSave() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      saveTimer = null;
-      api.saveContent(editor.innerHTML);
-    }, 300);
+    saveTimer = setTimeout(flushSave, 300);
   }
-  window.addEventListener('beforeunload', () => {
-    if (saveTimer) {
-      clearTimeout(saveTimer);
-      api.saveContent(editor.innerHTML);
-    }
-  });
+  // 창이 포커스를 잃거나 닫힐 때 (트레이에서 종료 등) 마지막 입력을 바로 저장
+  window.addEventListener('blur', () => { if (saveTimer) flushSave(); });
+  window.addEventListener('beforeunload', () => { if (saveTimer) flushSave(); });
 
   // -------------------------------------------------------------------------
   // 툴바: 굵게 / 토글 / 선택 글자색 / 형광펜
@@ -377,7 +396,18 @@
   btnToggle.addEventListener('mousedown', (e) => e.preventDefault());
   btnToggle.addEventListener('click', insertToggleAtCaret);
   btnMin.addEventListener('click', () => api.minimize());
-  btnClose.addEventListener('click', () => api.close());
+  btnClose.addEventListener('click', () => {
+    flushSave();
+    api.close();
+  });
+  btnNew.addEventListener('click', () => {
+    flushSave();
+    api.newNote();
+  });
+  btnDelete.addEventListener('click', () => {
+    flushSave();
+    api.deleteNote();
+  });
 
   // 색상 선택기를 열면 에디터 포커스가 빠지므로, 열기 직전의 선택 영역을 기억했다가 복원
   let savedRange = null;
@@ -490,6 +520,7 @@
   // -------------------------------------------------------------------------
   // 창 크기 조절 (투명 창은 OS 테두리 리사이즈가 불안정하므로 직접 처리)
   // -------------------------------------------------------------------------
+  const MIN_W = 260; // main.js 의 MIN_WIDTH 와 같게
   document.querySelectorAll('.rs').forEach((handle) => {
     handle.addEventListener('pointerdown', async (e) => {
       if (e.button !== 0) return;
@@ -506,10 +537,10 @@
         const dx = ev.screenX - sx;
         const dy = ev.screenY - sy;
         const b = { ...start };
-        if (dir.includes('e')) b.width = Math.max(220, start.width + dx);
+        if (dir.includes('e')) b.width = Math.max(MIN_W, start.width + dx);
         if (dir.includes('s')) b.height = Math.max(160, start.height + dy);
         if (dir.includes('w')) {
-          b.width = Math.max(220, start.width - dx);
+          b.width = Math.max(MIN_W, start.width - dx);
           b.x = start.x + (start.width - b.width);
         }
         if (dir.includes('n')) {

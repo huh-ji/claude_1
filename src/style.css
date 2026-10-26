@@ -142,7 +142,6 @@ html, body {
   border-radius: 4px; background: transparent; cursor: pointer;
 }
 #settings .small {
-  margin-left: auto;
   border: 1px solid rgba(0,0,0,.2);
   background: rgba(255,255,255,.4);
   border-radius: 4px;
@@ -249,4 +248,21 @@ body.collapsed .rs-n, body.collapsed .rs-s,
 body.collapsed .rs-ne, body.collapsed .rs-nw,
 body.collapsed .rs-se, body.collapsed .rs-sw {
   display: none !important;
+}
+
+/* ---------- 여러 메모 ---------- */
+.tool.new { font-size: 19px; font-weight: 400; }
+#settings .row.actions { justify-content: flex-end; }
+#settings .small.danger { color: #b3261e; border-color: rgba(179, 38, 30, .45); }
+#settings .small.danger:hover { background: #e5533d; color: #fff; }
+
+/* ---------- 좁은 창: 제목줄 버튼이 잘리지 않도록 촘촘하게 ---------- */
+#titlebar .tools { min-width: 0; overflow: hidden; } /* 그래도 모자라면 서식 버튼부터 가려지고 창 버튼은 항상 보임 */
+#titlebar .window-controls { flex: 0 0 auto; }
+@media (max-width: 330px) {
+  #titlebar { gap: 1px; padding: 0 4px; }
+  #titlebar .grip { display: none; }
+  #titlebar .tools, #titlebar .window-controls { gap: 1px; }
+  .tool { width: 22px; height: 24px; font-size: 13px; }
+  .tool.new { font-size: 17px; }
 }

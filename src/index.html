@@ -25,11 +25,12 @@
       </div>
 
       <div class="window-controls">
+        <button id="btn-new" class="tool new" title="새 메모 (Ctrl+N)">+</button>
         <button id="btn-settings" class="tool" title="설정 (투명도 · 글자 크기 · 기본 색상)">⚙</button>
         <button id="btn-collapse" class="tool collapse" title="내용 접기 (제목줄만 남기고 맨 위에 유지)"><span class="chev"></span></button>
         <button id="btn-pin" class="tool pin" title="항상 위에 고정 켜기/끄기">📌</button>
         <button id="btn-min" class="tool" title="최소화">–</button>
-        <button id="btn-close" class="tool close" title="닫기">✕</button>
+        <button id="btn-close" class="tool close" title="메모 닫기 (내용은 보존, 트레이 아이콘에서 다시 열기)">✕</button>
       </div>
     </header>
 
@@ -49,9 +50,12 @@
         <input id="text-color" type="color" value="#2b2b2b" />
         <span class="name">메모지 색</span>
         <input id="paper-color" type="color" value="#fff8c6" />
-        <button id="btn-reset" class="small" title="표시 설정을 기본값으로">초기화</button>
       </div>
-      <p class="hint">Ctrl+Shift+↑/↓ 투명도 · Ctrl + / Ctrl − 글자 크기 · Ctrl+Shift+M 보이기/숨기기</p>
+      <div class="row actions">
+        <button id="btn-reset" class="small" title="이 메모의 표시 설정을 기본값으로">표시 초기화</button>
+        <button id="btn-delete" class="small danger" title="이 메모를 완전히 삭제">이 메모 삭제</button>
+      </div>
+      <p class="hint">Ctrl+N 새 메모 · Ctrl+Shift+↑/↓ 투명도 · Ctrl + / Ctrl − 글자 크기 · Ctrl+Shift+M 모든 메모 보이기/숨기기</p>
     </section>
 
     <main id="editor" contenteditable="true" spellcheck="false" data-placeholder="메모를 입력하세요…  ('> ' + 제목으로 토글 블록)"></main>
