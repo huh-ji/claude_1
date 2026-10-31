@@ -65,9 +65,18 @@
     if (tag === 'U' || tag === 'INS') f.underline = true;
     if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL') f.strike = true;
     if (tag === 'MARK') f.bg = '#ffec99';
-    if (tag === 'FONT' && el.getAttribute('color')) {
-      const c = normalizeColor(el.getAttribute('color'));
-      if (c && !isBlackish(c)) f.color = c;
+    const colorAttr = el.getAttribute && el.getAttribute('color');
+    if (colorAttr) {
+      const named = /^([a-z]+?)(?:_(background|bg))?$/.exec(colorAttr.trim().toLowerCase());
+      if (named && (NOTION_TEXT[named[1]] || named[1] === 'default')) {
+        // Notion 색 이름 (default, gray, brown, orange, yellow, green, blue, purple, pink, red, *_background)
+        if (named[1] === 'default') { f.color = null; f.bg = null; }
+        else if (named[2]) f.bg = NOTION_BG[named[1]];
+        else f.color = NOTION_TEXT[named[1]];
+      } else if (tag === 'FONT') {
+        const c = normalizeColor(colorAttr);
+        if (c && !isBlackish(c)) f.color = c;
+      }
     }
 
     // 인라인 style (Google Docs 는 <b style="font-weight:normal"> 로 전체를 감싸므로 normal 을 존중)
@@ -196,6 +205,23 @@
 
     const nf = formatFor(el, f);
 
+    if (tag !== 'DETAILS' && el.classList && el.classList.contains('notion-toggle')) {
+      b.flush();
+      const content = el.querySelector('.notion-toggle-content, .notion-toggle-details');
+      const head = el.cloneNode(true);
+      head.querySelectorAll('.notion-toggle-content, .notion-toggle-details, .notion-toggle-button-arrow, svg').forEach((x) => x.remove());
+      const titleB = createBuilder();
+      walkChildren(head, titleB, nf, ctxt);
+      titleB.flush();
+      const title = titleB.blocks.filter((x) => x.type === 'line').map((x) => x.html).filter(Boolean).join(' ')
+        .replace(/^(?:[\s\u00a0▶▸►▼▾]|&nbsp;)+/, '');
+      const bodyB = createBuilder();
+      if (content) walkChildren(content, bodyB, nf, { ...ctxt, listDepth: 0, list: null });
+      bodyB.flush();
+      b.push({ type: 'toggle', title, open: true, children: bodyB.blocks });
+      return;
+    }
+
     if (tag === 'DETAILS') {
       b.flush();
       const summary = Array.from(el.children).find((c) => c.tagName === 'SUMMARY');
@@ -317,6 +343,78 @@
     return trimBlocks(blocks);
   }
 
+  // --- Notion 마크다운 (텍스트로 들어온 경우) -----------------------------
+  //   토글:        <details color="..."><summary>제목</summary> + 들여쓴 내용 + </details>
+  //   토글 제목:   ## 제목 {toggle="true"}  + 들여쓴 내용
+  const INLINE_TAG = /<\/?(?:span|b|strong|i|em|u|s|del|mark|br)\b[^>]*>/gi;
+  function mdInline(t) {
+    const kept = [];
+    let out = t.replace(INLINE_TAG, (m) => { kept.push(m); return '\u0000' + (kept.length - 1) + '\u0000'; });
+    out = escapeHtml(out)
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .replace(/__(.+?)__/g, '<b>$1</b>')
+      .replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/g, '$1<i>$2</i>')
+      .replace(/~~(.+?)~~/g, '<s>$1</s>')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+    return out.replace(/\u0000(\d+)\u0000/g, (_, i) => kept[Number(i)]);
+  }
+
+  function looksLikeNotionMarkdown(text) {
+    const t = String(text || '');
+    return (/<details[\s>]/i.test(t) && /<summary>/i.test(t)) || /\{toggle="true"\}/.test(t);
+  }
+
+  function fromNotionMarkdown(text) {
+    const out = [];
+    const openHeadings = []; // 토글 제목의 들여쓰기 깊이
+    let detailsDepth = 0; // 열린 <details> 수 (토글 안 들여쓰기는 구조이므로 화면 들여쓰기에서 뺀다)
+    const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    for (const raw of lines) {
+      const m = /^([\t ]*)(.*)$/.exec(raw);
+      const indent = m[1].replace(/\t/g, '    ').length;
+      const body = m[2].trimEnd();
+      if (!body) { out.push('<p><br></p>'); continue; }
+      while (openHeadings.length && indent <= openHeadings[openHeadings.length - 1]) {
+        out.push('</details>');
+        openHeadings.pop();
+      }
+      const th = /^(#{1,3})\s+(.*?)\s*\{toggle="true"\}\s*$/.exec(body);
+      if (th) {
+        out.push(`<details><summary>${mdInline(th[2])}</summary>`);
+        openHeadings.push(indent);
+        continue;
+      }
+      if (/^<\/?(?:details|summary)\b/i.test(body)) {
+        detailsDepth += (body.match(/<details\b/gi) || []).length - (body.match(/<\/details>/gi) || []).length;
+        detailsDepth = Math.max(0, detailsDepth);
+        out.push(body.replace(/<summary>([\s\S]*?)<\/summary>/i, (_, t) => `<summary>${mdInline(t)}</summary>`));
+        continue;
+      }
+      const level = Math.max(0, Math.floor(indent / 4) - detailsDepth - openHeadings.length);
+      const pad = NBSP.repeat(4 * level);
+      let mm;
+      if ((mm = /^#{1,6}\s+(.*)$/.exec(body))) out.push(`<p><b>${mdInline(mm[1])}</b></p>`);
+      else if ((mm = /^[-*+]\s+\[( |x|X)\]\s+(.*)$/.exec(body))) out.push(`<p>${pad}${mm[1] === ' ' ? '☐' : '☑'} ${mdInline(mm[2])}</p>`);
+      else if ((mm = /^[-*+]\s+(.*)$/.exec(body))) out.push(`<p>${pad}${level ? '◦' : '•'} ${mdInline(mm[1])}</p>`);
+      else if ((mm = /^>\s?(.*)$/.exec(body))) out.push(`<p>${pad}${mdInline(mm[1])}</p>`);
+      else out.push(`<p>${pad}${mdInline(body)}</p>`);
+    }
+    while (openHeadings.length) { out.push('</details>'); openHeadings.pop(); }
+    return fromHtml(out.join(''));
+  }
+
+  // 붙여넣기 진입점: HTML 을 우선 쓰되, 토글이 HTML 로 안 왔는데 텍스트가 Notion 마크다운이면 텍스트를 해석
+  function fromClipboard(html, text) {
+    const notionMd = looksLikeNotionMarkdown(text);
+    if (html) {
+      const blocks = fromHtml(html);
+      const hasToggle = blocks.some((x) => x.type === 'toggle');
+      if (blocks.length && (hasToggle || !notionMd)) return blocks;
+    }
+    return notionMd ? fromNotionMarkdown(text) : fromText(text);
+  }
+
   function renderBlocks(blocks) {
     return blocks.map((blk) => {
       if (blk.type === 'toggle') {
@@ -330,5 +428,5 @@
     }).join('');
   }
 
-  window.MemoPaste = { fromHtml, fromText, renderBlocks, normalizeColor };
+  window.MemoPaste = { fromHtml, fromText, fromClipboard, fromNotionMarkdown, renderBlocks, normalizeColor };
 })();

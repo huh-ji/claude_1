@@ -218,6 +218,44 @@ const structure = (page) => page.evaluate(() => {
     await p.close();
   });
 
+  await test('붙여넣기: Notion 형식 - <details color>, notion-toggle 마크업', async () => {
+    const p = await openNote(browser, '<div><br></div>');
+    await p.click('#editor');
+    await paste(p, {
+      'text/html': '<details color="red_background"><summary>빨간 배경 토글</summary><p>내용 <span color="blue">파랑</span></p></details>' +
+        '<div class="notion-block notion-toggle notion-toggle-open"><button class="notion-toggle-button"><span class="notion-toggle-button-arrow">▶</span></button>' +
+        '<span>웹 토글 <b>제목</b></span><div class="notion-toggle-content"><p>웹 내용 1</p><p>웹 내용 2</p></div></div>',
+      'text/plain': '',
+    });
+    const st = await structure(p);
+    assert.deepStrictEqual(st.filter((x) => x !== ''), [
+      { toggle: '빨간 배경 토글', open: 'true', body: ['내용 파랑'] },
+      { toggle: '웹 토글 제목', open: 'true', body: ['웹 내용 1', '웹 내용 2'] },
+    ], JSON.stringify(st));
+    const h = await html(p);
+    assert.match(h, /background-color: rgb\(253, 235, 236\);">빨간 배경 토글/, h);
+    assert.match(h, /color: rgb\(51, 126, 169\);[^"]*">파랑/, h);
+    assert.ok(h.includes('<b>제목</b>'), h);
+    await p.close();
+  });
+
+  await test('붙여넣기: Notion 마크다운 텍스트 (토글 제목 {toggle="true"}, <details>, 태그가 글자로 온 HTML)', async () => {
+    const p = await openNote(browser, '<div><br></div>');
+    await p.click('#editor');
+    await paste(p, { 'text/plain': '## 회의 {toggle="true"}\n\t안건 **중요**\n\t- 항목\n\t\t- 하위 항목\n다음 줄' });
+    let st = await structure(p);
+    assert.deepStrictEqual(st, [{ toggle: '회의', open: 'true', body: ['안건 중요', '• 항목', '\u00a0\u00a0\u00a0\u00a0◦ 하위 항목'] }, '다음 줄'], JSON.stringify(st));
+    assert.ok((await html(p)).includes('<b>중요</b>'));
+    const p2 = await openNote(browser, '<div><br></div>');
+    await p2.click('#editor');
+    const md = '<details>\n<summary>토글 제목</summary>\n\t첫 줄\n\t<details>\n\t<summary>안쪽</summary>\n\t\t깊은 줄\n\t</details>\n</details>';
+    // HTML 쪽에는 태그가 글자로 들어온 경우 (마크다운 → HTML 변환이 태그를 이스케이프한 경우)
+    await paste(p2, { 'text/html': '<p>' + md.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '</p><p>') + '</p>', 'text/plain': md });
+    st = await structure(p2);
+    assert.deepStrictEqual(st, [{ toggle: '토글 제목', open: 'true', body: ['첫 줄', { toggle: '안쪽', open: 'true', body: ['깊은 줄'] }] }], JSON.stringify(st));
+    await p.close(); await p2.close();
+  });
+
   await test('붙여넣기: 토글 제목 안에 여러 줄 → 첫 줄은 제목, 나머지는 토글 안', async () => {
     const p = await openNote(browser,
       '<div class="toggle" data-open="true"><span class="toggle-arrow" contenteditable="false"></span><div class="toggle-title">제목:</div><div class="toggle-body"><div><br></div></div></div>');

@@ -421,11 +421,11 @@
   editor.addEventListener('paste', (e) => {
     e.preventDefault();
     const cd = e.clipboardData || window.clipboardData;
-    const html = plainPasteNext ? '' : cd.getData('text/html');
+    const plainOnly = plainPasteNext;
+    const html = plainOnly ? '' : cd.getData('text/html');
     plainPasteNext = false;
     const text = cd.getData('text/plain');
-    let blocks = html ? window.MemoPaste.fromHtml(html) : [];
-    if (!blocks.length) blocks = window.MemoPaste.fromText(text);
+    const blocks = plainOnly ? window.MemoPaste.fromText(text) : window.MemoPaste.fromClipboard(html, text);
     if (!blocks.length) return;
     insertBlocks(blocks);
   });

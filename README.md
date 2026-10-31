@@ -80,7 +80,7 @@ Playwright 가 없다면 `npm install -D playwright` 후 `npx playwright install
 - 다른 프로그램이 **전체 화면(배타적 풀스크린)** 모드일 때는 운영체제 정책상 그 위에 뜨지 않을 수 있습니다. 일반 창·최대화 창 위에는 표시됩니다.
 - 앱 종료는 트레이 메뉴의 **종료** 로 합니다. ✕ 는 메모 하나만 닫습니다. 트레이 아이콘이 안 보이면 알림 영역의 `^` (숨겨진 아이콘) 안에 있을 수 있습니다.
 - 1.2 이하 버전의 메모는 처음 실행할 때 자동으로 새 형식(메모 목록)으로 옮겨집니다.
-- 붙여넣기 서식 유지는 표준 HTML(`<details>` 토글, 목록, 굵게, 색 등)과 Notion 색 이름을 기준으로 만들었습니다. Notion 이 클립보드에 넣는 토글 형식은 공식 자료로 확인하지 못해서, Notion 토글이 토글 대신 글머리표 목록으로 붙을 수 있습니다.
+- 붙여넣기에서 토글로 인식하는 형식: HTML `<details>/<summary>`, Notion 색 이름(`color="red"`, `red_background`, `highlight-*` 클래스), Notion 기반 웹사이트의 `notion-toggle` 구조, Notion 마크다운 텍스트(`<details>` 와 `## 제목 {toggle="true"}` + 들여쓴 내용). Notion 앱이 클립보드에 넣는 실제 형식은 공식 문서에 없어 직접 확인하지 못했습니다. 이 중 어느 것도 아니면 토글 대신 글머리표 목록으로 붙습니다.
 - 저장 위치: 운영체제의 앱 데이터 폴더 (`%APPDATA%\float-memo\state.json`, `~/Library/Application Support/float-memo/state.json`, `~/.config/float-memo/state.json`)
 
 ## 구조
