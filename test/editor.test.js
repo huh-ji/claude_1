@@ -165,6 +165,29 @@ const structure = (page) => page.evaluate(() => {
     await p.close(); await p2.close();
   });
 
+  await test('토글 제목 맨 앞 Backspace → 토글이 풀리고 안의 항목이 바깥으로 (맨 앞 토글 포함)', async () => {
+    const p = await openNote(browser,
+      '<div class="toggle" data-open="true"><span class="toggle-arrow" contenteditable="false"></span><div class="toggle-title"><b>회의</b></div><div class="toggle-body"><div>안건1</div><div>안건2</div></div></div><div>밖의 글</div>');
+    await select(p, '회의', 0);
+    await p.keyboard.press('Backspace');
+    assert.deepStrictEqual(await structure(p), ['회의', '안건1', '안건2', '밖의 글']);
+    assert.ok((await html(p)).startsWith('<div><b>회의</b></div>'), '제목 서식 유지: ' + await html(p));
+    await p.keyboard.type('★'); // 캐럿은 풀린 제목 줄 맨 앞
+    assert.deepStrictEqual((await structure(p))[0], '★회의');
+    await p.close();
+  });
+
+  await test('예전 버전에서 깨진 채 저장된 토글은 열 때 자동 복구', async () => {
+    const p = await openNote(browser,
+      '<div class="toggle" data-open="true"><span class="toggle-arrow" contenteditable="false"></span>회의<div class="toggle-body"><div>안건1</div><div>안건2</div></div></div><div>밖의 글</div>');
+    assert.deepStrictEqual(await structure(p), ['회의', '안건1', '안건2', '밖의 글']);
+    // 정상 토글은 그대로
+    const p2 = await openNote(browser,
+      '<div class="toggle" data-open="false"><span class="toggle-arrow" contenteditable="false"></span><div class="toggle-title">정상</div><div class="toggle-body"><div>내용</div></div></div>');
+    assert.deepStrictEqual(await structure(p2), [{ toggle: '정상', open: 'false', body: ['내용'] }]);
+    await p.close(); await p2.close();
+  });
+
   await test('붙여넣기: 굵게·색·여러 줄이 유지되고 줄 중간에 끼워짐', async () => {
     const p = await openNote(browser, '<div>앞뒤</div>');
     await select(p, '앞뒤', 1);

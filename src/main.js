@@ -421,7 +421,50 @@ function noteListItems(currentId) {
   return items.length ? items : [{ label: '메모 없음', enabled: false }];
 }
 
-const QUIT_LABEL = '앱 종료 (모든 메모 닫기 · 다음 실행 때 그대로 열림)';
+const QUIT_LABEL = '앱 종료';
+
+// 메모 삭제 (확인 창: 메모 삭제 / 삭제 안 하고 돌아가기). 빈 메모는 묻지 않고 삭제
+async function deleteNoteWithConfirm(note, parentWin) {
+  if (!noteById(note.id)) return false;
+  if (!isEmptyNote(note)) {
+    const parent = parentWin && !parentWin.isDestroyed() ? parentWin : undefined;
+    const name = (note.title || '').trim() || '(빈 메모)';
+    const opts = {
+      type: 'warning',
+      buttons: ['메모 삭제', '삭제 안 하고 돌아가기'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+      title: 'FloatMemo',
+      message: `"${name.length > 40 ? name.slice(0, 40) + '…' : name}" 메모를 삭제할까요?`,
+      detail: '삭제한 메모는 되돌릴 수 없습니다.',
+    };
+    const { response } = parent ? await dialog.showMessageBox(parent, opts) : await dialog.showMessageBox(opts);
+    if (response !== 0) return false;
+  }
+  note.deleted = true;
+  const win = windows.get(note.id);
+  removeNote(note.id);
+  if (win && !win.isDestroyed()) win.close();
+  return true;
+}
+
+// 확인 창이 항상 위에 떠 있는 메모들 뒤로 숨지 않도록, 보이는 메모 창을 부모로 쓴다
+function dialogParent(preferred) {
+  if (preferred && !preferred.isDestroyed()) return preferred;
+  const last = lastFocusedNote() && windows.get(lastFocusedNote().id);
+  if (last && !last.isDestroyed() && last.isVisible()) return last;
+  return [...windows.values()].find((w) => !w.isDestroyed() && w.isVisible());
+}
+
+// '메모 삭제' 하위 메뉴: 열린 메모(●)도 닫힌 메모(○)도 바로 삭제 가능
+function deleteMenuItem(parentWin) {
+  const items = state.notes.map((n) => ({
+    label: (n.open ? '● ' : '○ ') + trayLabel(n),
+    click: () => deleteNoteWithConfirm(n, dialogParent(parentWin)),
+  }));
+  return { label: '메모 삭제', enabled: items.length > 0, submenu: items.length ? items : [{ label: '메모 없음', enabled: false }] };
+}
 
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
@@ -430,6 +473,8 @@ function buildTrayMenu() {
     ...noteListItems(null),
     { type: 'separator' },
     { label: '모든 메모 열기', enabled: state.notes.length > 0, click: openAllNotes },
+    deleteMenuItem(null),
+    { type: 'separator' },
     { label: '빠른 색상 편집…', click: () => openOptionsWindow('colors') },
     { label: '단축키 도움말', click: () => openOptionsWindow('help') },
     { type: 'separator' },
@@ -451,6 +496,7 @@ function buildMoreMenu(note, win) {
       ...noteListItems(note.id),
       { type: 'separator' },
       { label: '모든 메모 열기', enabled: state.notes.length > 0, click: openAllNotes },
+      deleteMenuItem(win),
     ] },
     { type: 'separator' },
     { label: '빠른 색상', submenu: [
@@ -630,24 +676,7 @@ ipcMain.on('memo:new-note', (e) => {
 
 ipcMain.handle('memo:delete-note', async (e) => {
   const c = ctxFor(e);
-  if (!c) return false;
-  if (!isEmptyNote(c.note)) {
-    const { response } = await dialog.showMessageBox(c.win || undefined, {
-      type: 'warning',
-      buttons: ['삭제', '취소'],
-      defaultId: 1,
-      cancelId: 1,
-      noLink: true,
-      title: 'FloatMemo',
-      message: '이 메모를 삭제할까요?',
-      detail: '삭제한 메모는 되돌릴 수 없습니다.',
-    });
-    if (response !== 0) return false;
-  }
-  c.note.deleted = true;
-  removeNote(c.note.id);
-  if (c.win) c.win.close();
-  return true;
+  return c ? deleteNoteWithConfirm(c.note, c.win) : false;
 });
 
 // 투명 창은 OS 기본 테두리 리사이즈가 불안정하므로 렌더러의 리사이즈 핸들에서 직접 크기를 조정

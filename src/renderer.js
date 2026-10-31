@@ -216,6 +216,49 @@
     return true;
   }
 
+  // 토글 풀기: 제목(과 토글 안에 흩어진 글자)은 일반 줄로, 안의 항목은 모두 바깥으로 꺼낸다
+  function unwrapToggle(toggle) {
+    const title = toggle.querySelector(':scope > .toggle-title');
+    const body = toggle.querySelector(':scope > .toggle-body');
+    const line = document.createElement('div');
+    Array.from(toggle.childNodes).forEach((n) => {
+      if (n === body) return;
+      if (n.nodeType === 1 && n.classList.contains('toggle-arrow')) return;
+      if (n === title) { while (title.firstChild) line.appendChild(title.firstChild); return; }
+      line.appendChild(n);
+    });
+    if (line.textContent === '' && !line.querySelector('br')) line.innerHTML = '<br>';
+    let lifted = body ? Array.from(body.childNodes) : [];
+    if (lifted.length === 1 && lifted[0].nodeType === 1 && isEmptyBlock(lifted[0])) lifted = []; // 빈 본문은 버림
+    lifted = lifted.map((n) => (n.nodeType === 1 ? n : (() => { const d = document.createElement('div'); d.appendChild(n); return d; })()));
+    toggle.replaceWith(line, ...lifted);
+    return line;
+  }
+
+  // 구조가 깨진 토글(제목 칸이나 화살표가 지워졌거나, 토글 안에 글자가 흩어진 경우)을 찾아 풀어 준다
+  function repairToggles() {
+    let changed = false;
+    editor.querySelectorAll('.toggle').forEach((t) => {
+      if (!t.isConnected) return;
+      const title = t.querySelector(':scope > .toggle-title');
+      const arrow = t.querySelector(':scope > .toggle-arrow');
+      const loose = Array.from(t.childNodes).some((n) => n !== title && n !== arrow &&
+        !(n.nodeType === 1 && n.classList.contains('toggle-body')) &&
+        !(n.nodeType === 3 && !n.nodeValue.trim()));
+      if (!title || !arrow || loose) {
+        withSelectionKept(() => unwrapToggle(t));
+        changed = true;
+      } else if (!t.querySelector(':scope > .toggle-body')) {
+        const body = document.createElement('div');
+        body.className = 'toggle-body';
+        body.appendChild(makeLine(''));
+        title.after(body);
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
   // Shift+Tab: 토글 안의 줄(또는 토글)을 그 토글 바로 아래로 꺼낸다
   function outdentBlock(block) {
     const body = block.parentElement;
@@ -365,20 +408,14 @@
       }
     }
 
-    // 빈 토글 제목에서 Backspace → 토글 해제 (본문도 비어 있을 때)
-    if (e.key === 'Backspace' && line.classList.contains('toggle-title') && r.collapsed) {
-      const toggle = line.closest('.toggle');
-      const body = toggle.querySelector('.toggle-body');
-      const pre = r.cloneRange();
-      pre.setStart(line, 0);
-      if (pre.toString() === '' && isEmptyBlock(line) && isEmptyBlock(body)) {
-        e.preventDefault();
-        const plain = makeLine('');
-        toggle.replaceWith(plain);
-        setCaret(plain, 0);
-        scheduleSave();
-        return;
-      }
+    // 토글 제목 맨 앞에서 Backspace → 토글 풀기 (제목은 일반 줄, 안의 항목은 바깥으로)
+    if (e.key === 'Backspace' && line.classList.contains('toggle-title') && r.collapsed && textBeforeCaret(line, r) === '') {
+      e.preventDefault();
+      const plain = unwrapToggle(line.closest('.toggle'));
+      caretToStart(plain);
+      ensureNotEmpty();
+      scheduleSave();
+      return;
     }
 
     // 토글 본문 첫 줄 맨 앞에서 Backspace → 제목 끝으로 이동 (줄 삭제는 비어 있을 때만)
@@ -462,19 +499,10 @@
   // 붙여넣기 뒤 구조 정리: 줄 안에 줄이 끼거나 토글 부품이 빠진 경우를 바로잡고, 불필요한 스타일 제거
   const KEEP_STYLES = ['color', 'background-color', 'font-weight', 'font-style', 'text-decoration-line'];
   function normalizeEditor() {
+    repairToggles();
     editor.querySelectorAll('.toggle').forEach((t) => {
-      let arrow = t.querySelector(':scope > .toggle-arrow');
-      let title = t.querySelector(':scope > .toggle-title');
-      let body = t.querySelector(':scope > .toggle-body');
-      if (!arrow) {
-        arrow = document.createElement('span');
-        arrow.className = 'toggle-arrow';
-        arrow.title = '펼치기/접기';
-        t.prepend(arrow);
-      }
-      arrow.setAttribute('contenteditable', 'false');
-      if (!title) { title = document.createElement('div'); title.className = 'toggle-title'; arrow.after(title); }
-      if (!body) { body = document.createElement('div'); body.className = 'toggle-body'; title.after(body); }
+      t.querySelector(':scope > .toggle-arrow').setAttribute('contenteditable', 'false');
+      const body = t.querySelector(':scope > .toggle-body');
       if (!body.firstChild) body.appendChild(makeLine(''));
       if (!t.dataset.open) t.dataset.open = 'true';
     });
@@ -516,6 +544,7 @@
       const r = getRange();
       if (r && r.collapsed) tryAutoToggle(getLineBlock(r.startContainer), r, true);
     }
+    repairToggles();
     ensureNotEmpty();
     scheduleSave();
   });
@@ -871,6 +900,7 @@
   async function init() {
     const state = await api.getState();
     if (state.content) editor.innerHTML = state.content;
+    if (repairToggles()) scheduleSave(); // 예전 버전에서 깨진 채 저장된 토글 복구
     ensureNotEmpty();
     pinned = state.pinned !== false;
     renderPin();
