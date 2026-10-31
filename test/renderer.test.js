@@ -26,6 +26,10 @@ const { chromium } = require('playwright');
       setCollapsed: (f) => { window.__collapsed = f; },
       getBounds: async () => ({ x: 100, y: 100, width: 380, height: 420 }),
       setBounds: (b) => { window.__bounds = b; },
+      showMoreMenu: (pos) => { window.__moreMenu = pos; },
+      openOptions: (tab) => { window.__options = tab; },
+      onQuickColors: () => {},
+      onApplyQuickColor: () => {},
       minimize: () => {},
       close: () => {},
     };
@@ -133,18 +137,24 @@ const { chromium } = require('playwright');
   await page.click('#btn-pin');
   assert.strictEqual(await page.evaluate(() => window.__pinned), false);
 
-  // 7b) 선택 영역 글자색 / 형광펜 (선택이 색상 선택기로 포커스가 옮겨가도 유지되어야 함)
+  // 7b) 색상 팔레트: 선택한 글자에 글자색 / 배경색, 같은 색을 다시 눌러도 적용
   await page.click('#editor');
   await page.keyboard.press('Control+End');
   await page.keyboard.press('Enter');
   await page.keyboard.type('색칠');
   await page.keyboard.press('Shift+Home');
-  await page.dispatchEvent('#color-text', 'pointerdown');
-  await page.$eval('#color-text', (i) => { i.focus(); i.value = '#0000ff'; i.dispatchEvent(new Event('input', { bubbles: true })); });
-  assert.match(await page.innerHTML('#editor'), /<span style="color: rgb\(0, 0, 255\);">색칠<\/span>/, '글자색 적용: ' + await page.innerHTML('#editor'));
-  await page.dispatchEvent('#color-hilite', 'pointerdown');
-  await page.$eval('#color-hilite', (i) => { i.focus(); i.value = '#00ff00'; i.dispatchEvent(new Event('input', { bubbles: true })); });
-  assert.match(await page.innerHTML('#editor'), /background-color: rgb\(0, 255, 0\)/, '형광펜 적용: ' + await page.innerHTML('#editor'));
+  await page.click('#btn-color');
+  assert.strictEqual(await page.isVisible('#palette'), true, '팔레트가 열려야 함');
+  await page.click('.pal-row[data-kind="text"] .swatch[title^="파랑"]');
+  assert.strictEqual(await page.isVisible('#palette'), false, '색을 고르면 팔레트가 닫힘');
+  assert.match(await page.innerHTML('#editor'), /<span style="color: rgb\(25, 113, 194\);">색칠<\/span>/, '글자색 적용: ' + await page.innerHTML('#editor'));
+  await page.click('#btn-color');
+  await page.click('.pal-row[data-kind="bg"] .swatch[title^="초록"]');
+  assert.match(await page.innerHTML('#editor'), /background-color: rgb\(178, 242, 187\)/, '배경색 적용: ' + await page.innerHTML('#editor'));
+  // '기본 글자색' 은 색 지정을 지움
+  await page.click('#btn-color');
+  await page.click('.pal-row[data-kind="text"] .swatch.none');
+  assert.ok(!/color: rgb\(25, 113, 194\)/.test(await page.innerHTML('#editor')), '기본 글자색으로 되돌리기: ' + await page.innerHTML('#editor'));
 
   // 7c) 리사이즈 핸들 → setBounds 호출 (오른쪽 아래 모서리를 +40,+30 드래그)
   const se = await page.$('.rs-se');

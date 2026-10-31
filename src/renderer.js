@@ -19,8 +19,12 @@
   const btnReset = document.getElementById('btn-reset');
   const btnNew = document.getElementById('btn-new');
   const btnDelete = document.getElementById('btn-delete');
-  const colorTextInput = document.getElementById('color-text');
-  const colorHiliteInput = document.getElementById('color-hilite');
+  const btnColor = document.getElementById('btn-color');
+  const btnMore = document.getElementById('btn-more');
+  const palette = document.getElementById('palette');
+  const palPicker = document.getElementById('pal-picker');
+  const palClear = document.getElementById('pal-clear');
+  const palQuick = document.getElementById('pal-quick');
 
   // Electron 밖(브라우저 테스트)에서도 동작하도록 안전한 대체 API
   const api = window.memo || {
@@ -35,6 +39,10 @@
     setBounds: () => {},
     minimize: () => {},
     close: () => {},
+    showMoreMenu: () => {},
+    openOptions: () => {},
+    onQuickColors: () => {},
+    onApplyQuickColor: () => {},
   };
 
   const DEFAULTS = { bgOpacity: 0.92, fontSize: 14, textColor: '#2b2b2b', paperColor: '#fff8c6' };
@@ -144,19 +152,81 @@
     scheduleSave();
   }
 
-  // 현재 줄을 토글 블록으로 변환 (줄 내용 → 토글 제목)
-  function convertLineToToggle(line, titleText) {
-    const toggle = createToggle(titleText != null ? titleText : line.textContent.trim());
-    line.replaceWith(toggle);
+  // 현재 줄을 토글 블록으로 변환 (줄 내용과 서식 → 토글 제목). caretAt: 'start' | 'end'
+  function convertLineToToggle(line, caretAt = 'end') {
+    const toggle = createToggle('');
     const titleEl = toggle.querySelector('.toggle-title');
-    if (titleEl.textContent) {
-      const tn = firstTextNode(titleEl);
-      setCaret(tn, tn.length);
-    } else {
+    while (line.firstChild) titleEl.appendChild(line.firstChild);
+    if (titleEl.textContent === '') titleEl.innerHTML = '';
+    line.replaceWith(toggle);
+    if (caretAt === 'start' || !titleEl.textContent) {
       caretToStart(titleEl);
+    } else {
+      const tn = lastTextNode(titleEl);
+      setCaret(tn, tn.length);
     }
     scheduleSave();
     return toggle;
+  }
+
+  // 줄 맨 앞부터 캐럿까지의 글자
+  function textBeforeCaret(line, r) {
+    const pre = r.cloneRange();
+    pre.setStart(line, 0);
+    return pre.toString();
+  }
+
+  // "> " 또는 ">" + Tab 으로 토글 만들기: 앞의 '>' (와 공백) 을 지우고 나머지 글을 토글 제목으로
+  function tryAutoToggle(line, r, typedSpace) {
+    if (!line || line.classList.contains('toggle-title') || line.classList.contains('toggle')) return false;
+    const before = textBeforeCaret(line, r);
+    const ok = typedSpace ? /^>[ \u00a0]$/.test(before) : before === '>';
+    if (!ok) return false;
+    const del = r.cloneRange();
+    del.setStart(line, 0);
+    del.deleteContents();
+    convertLineToToggle(line, 'start');
+    return true;
+  }
+
+  // 선택/캐럿 위치를 기억했다가 블록을 옮긴 뒤 되돌린다 (노드를 옮기면 선택이 풀리므로)
+  function withSelectionKept(fn) {
+    const sel = window.getSelection();
+    const r = sel.rangeCount ? sel.getRangeAt(0) : null;
+    const saved = r && { sc: r.startContainer, so: r.startOffset, ec: r.endContainer, eo: r.endOffset };
+    fn();
+    if (saved && editor.contains(saved.sc) && editor.contains(saved.ec)) {
+      try { sel.setBaseAndExtent(saved.sc, saved.so, saved.ec, saved.eo); } catch { /* ignore */ }
+    }
+  }
+
+  // Tab: 바로 위가 토글이면 이 줄(또는 토글)을 그 토글 안 맨 끝으로 넣는다
+  function indentBlock(block) {
+    const prev = block.previousElementSibling;
+    if (!prev || !prev.classList.contains('toggle')) return false;
+    const body = prev.querySelector(':scope > .toggle-body');
+    withSelectionKept(() => {
+      if (body.children.length === 1 && isEmptyBlock(body.firstElementChild) && body.firstElementChild !== block) {
+        body.firstElementChild.remove();
+      }
+      body.appendChild(block);
+      prev.dataset.open = 'true';
+    });
+    scheduleSave();
+    return true;
+  }
+
+  // Shift+Tab: 토글 안의 줄(또는 토글)을 그 토글 바로 아래로 꺼낸다
+  function outdentBlock(block) {
+    const body = block.parentElement;
+    if (!body || !body.classList.contains('toggle-body')) return false;
+    const toggle = body.closest('.toggle');
+    withSelectionKept(() => {
+      toggle.after(block);
+      if (body.children.length === 0) body.appendChild(makeLine(''));
+    });
+    scheduleSave();
+    return true;
   }
 
   function insertToggleAtCaret() {
@@ -212,41 +282,39 @@
   // -------------------------------------------------------------------------
   editor.addEventListener('keydown', (e) => {
     const mod = e.ctrlKey || e.metaKey;
+    const code = e.code;
 
-    if (mod && !e.shiftKey && e.key.toLowerCase() === 'b') {
-      e.preventDefault();
-      toggleBold();
+    if (e.key === 'Escape' && !palette.hidden) {
+      closePalette();
       return;
     }
-    if (mod && !e.shiftKey && e.key.toLowerCase() === 'n') {
-      e.preventDefault();
-      flushSave();
-      api.newNote();
+    if (mod && !e.shiftKey && !e.altKey) {
+      const digit = /^(?:Digit|Numpad)([1-9])$/.exec(code);
+      if (digit) {
+        e.preventDefault();
+        applyQuickColor(Number(digit[1]) - 1);
+        return;
+      }
+      if (code === 'KeyB') { e.preventDefault(); toggleBold(); return; }
+      if (code === 'KeyN') { e.preventDefault(); flushSave(); api.newNote(); return; }
+      if (code === 'Backslash') { e.preventDefault(); clearFormatting(); return; }
+      if (code === 'Equal' || code === 'NumpadAdd') { e.preventDefault(); updateSettings({ fontSize: settings.fontSize + 1 }); return; }
+      if (code === 'Minus' || code === 'NumpadSubtract') { e.preventDefault(); updateSettings({ fontSize: settings.fontSize - 1 }); return; }
+      if (code === 'Digit0' || code === 'Numpad0') { e.preventDefault(); updateSettings({ fontSize: DEFAULTS.fontSize }); return; }
+    }
+    if (mod && e.shiftKey && code === 'KeyV') {
+      plainPasteNext = true; // 서식 없이 붙여넣기 (Chromium 은 같은 paste 이벤트를 보내므로 표시만 해 둠)
+      setTimeout(() => { plainPasteNext = false; }, 500);
       return;
     }
-    if (mod && e.shiftKey && e.key.toLowerCase() === 't') {
+    if (mod && e.shiftKey && code === 'KeyT') {
       e.preventDefault();
       insertToggleAtCaret();
       return;
     }
-    if (mod && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    if (mod && e.shiftKey && (code === 'ArrowUp' || code === 'ArrowDown')) {
       e.preventDefault();
-      updateSettings({ bgOpacity: settings.bgOpacity + (e.key === 'ArrowUp' ? 0.05 : -0.05) });
-      return;
-    }
-    if (mod && (e.key === '=' || e.key === '+')) {
-      e.preventDefault();
-      updateSettings({ fontSize: settings.fontSize + 1 });
-      return;
-    }
-    if (mod && e.key === '-') {
-      e.preventDefault();
-      updateSettings({ fontSize: settings.fontSize - 1 });
-      return;
-    }
-    if (mod && e.key === '0') {
-      e.preventDefault();
-      updateSettings({ fontSize: DEFAULTS.fontSize });
+      updateSettings({ bgOpacity: settings.bgOpacity + (code === 'ArrowUp' ? 0.05 : -0.05) });
       return;
     }
 
@@ -255,15 +323,15 @@
     const line = getLineBlock(r.startContainer);
     if (!line) return;
 
-    // "> " 입력 → 토글 블록
-    if (e.key === ' ' && r.collapsed && !line.classList.contains('toggle-title')) {
-      const pre = r.cloneRange();
-      pre.setStart(line, 0);
-      if (pre.toString() === '>' && line.textContent === '>') {
-        e.preventDefault();
-        convertLineToToggle(line, '');
-        return;
-      }
+    // Tab: '>' 뒤면 토글 만들기, 바로 위가 토글이면 그 안으로 넣기 / Shift+Tab: 토글 밖으로 꺼내기
+    if (code === 'Tab' && !mod && !e.altKey) {
+      e.preventDefault(); // 포커스가 다른 버튼으로 넘어가지 않도록
+      if (e.isComposing) return;
+      if (!e.shiftKey && r.collapsed && tryAutoToggle(line, r, false)) return;
+      const block = line.classList.contains('toggle-title') ? line.closest('.toggle') : line;
+      if (e.shiftKey) outdentBlock(block);
+      else if (!indentBlock(block)) document.execCommand('insertText', false, '\u00a0\u00a0\u00a0\u00a0');
+      return;
     }
 
     // 토글 제목에서 Enter → 본문 첫 줄로 이동 (접혀 있으면 펼침)
@@ -346,14 +414,108 @@
     setToggleOpen(toggle, toggle.dataset.open === 'false');
   });
 
-  // 붙여넣기는 서식 없는 텍스트로
+  // -------------------------------------------------------------------------
+  // 붙여넣기: 다른 곳의 서식(굵게·색·줄바꿈·목록·토글)을 메모 형식으로 정리해서 유지
+  // -------------------------------------------------------------------------
+  let plainPasteNext = false;
   editor.addEventListener('paste', (e) => {
     e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-    document.execCommand('insertText', false, text);
+    const cd = e.clipboardData || window.clipboardData;
+    const html = plainPasteNext ? '' : cd.getData('text/html');
+    plainPasteNext = false;
+    const text = cd.getData('text/plain');
+    let blocks = html ? window.MemoPaste.fromHtml(html) : [];
+    if (!blocks.length) blocks = window.MemoPaste.fromText(text);
+    if (!blocks.length) return;
+    insertBlocks(blocks);
   });
 
-  editor.addEventListener('input', () => {
+  function insertBlocks(blocks) {
+    const r = getRange();
+    const line = r && getLineBlock(r.startContainer);
+    const single = blocks.length === 1 && blocks[0].type === 'line';
+
+    if (single) {
+      if (blocks[0].html) document.execCommand('insertHTML', false, blocks[0].html);
+    } else if (line && line.classList.contains('toggle-title')) {
+      // 토글 제목 안: 첫 줄만 제목에, 나머지는 토글 본문 맨 앞에
+      let rest = blocks;
+      if (blocks[0].type === 'line') {
+        if (blocks[0].html) document.execCommand('insertHTML', false, blocks[0].html);
+        rest = blocks.slice(1);
+      }
+      const toggle = line.closest('.toggle');
+      const body = toggle.querySelector(':scope > .toggle-body');
+      const tmp = document.createElement('div');
+      tmp.innerHTML = window.MemoPaste.renderBlocks(rest);
+      if (body.children.length === 1 && isEmptyBlock(body.firstElementChild)) body.firstElementChild.remove();
+      body.prepend(...tmp.childNodes);
+      toggle.dataset.open = 'true';
+    } else {
+      document.execCommand('insertHTML', false, window.MemoPaste.renderBlocks(blocks));
+    }
+    normalizeEditor();
+    ensureNotEmpty();
+    scheduleSave();
+  }
+
+  // 붙여넣기 뒤 구조 정리: 줄 안에 줄이 끼거나 토글 부품이 빠진 경우를 바로잡고, 불필요한 스타일 제거
+  const KEEP_STYLES = ['color', 'background-color', 'font-weight', 'font-style', 'text-decoration-line'];
+  function normalizeEditor() {
+    editor.querySelectorAll('.toggle').forEach((t) => {
+      let arrow = t.querySelector(':scope > .toggle-arrow');
+      let title = t.querySelector(':scope > .toggle-title');
+      let body = t.querySelector(':scope > .toggle-body');
+      if (!arrow) {
+        arrow = document.createElement('span');
+        arrow.className = 'toggle-arrow';
+        arrow.title = '펼치기/접기';
+        t.prepend(arrow);
+      }
+      arrow.setAttribute('contenteditable', 'false');
+      if (!title) { title = document.createElement('div'); title.className = 'toggle-title'; arrow.after(title); }
+      if (!body) { body = document.createElement('div'); body.className = 'toggle-body'; title.after(body); }
+      if (!body.firstChild) body.appendChild(makeLine(''));
+      if (!t.dataset.open) t.dataset.open = 'true';
+    });
+    flattenLines(editor);
+    editor.querySelectorAll('.toggle-body').forEach(flattenLines);
+    editor.querySelectorAll('[style]').forEach((el) => {
+      if (el.classList.contains('toggle') || el === editor) return;
+      const keep = KEEP_STYLES.map((prop) => [prop, el.style.getPropertyValue(prop)]).filter(([, v]) => v);
+      el.removeAttribute('style');
+      keep.forEach(([prop, v]) => el.style.setProperty(prop, v));
+      if (!el.getAttribute('style')) el.removeAttribute('style');
+    });
+  }
+
+  // 컨테이너(편집 영역/토글 본문)의 직속 줄 안에 또 다른 줄(div)이 들어가 있으면 펼쳐서 형제 줄로 만든다
+  function flattenLines(container) {
+    Array.from(container.children).forEach((line) => {
+      if (line.tagName !== 'DIV' || line.classList.contains('toggle')) return;
+      if (!Array.from(line.children).some((c) => c.tagName === 'DIV')) return;
+      const out = [];
+      let current = null;
+      Array.from(line.childNodes).forEach((n) => {
+        if (n.nodeType === 1 && n.tagName === 'DIV') {
+          current = null;
+          out.push(n);
+        } else {
+          if (!current) { current = document.createElement('div'); out.push(current); }
+          current.appendChild(n);
+        }
+      });
+      const kept = out.filter((d) => d.classList.contains('toggle') || d.textContent !== '' || d.querySelector('br'));
+      if (kept.length) line.replaceWith(...kept);
+    });
+  }
+
+  editor.addEventListener('input', (e) => {
+    // "> " 를 치면 토글로 (한글 입력기에서도 동작하도록 keydown 대신 입력 결과로 판단)
+    if (e.inputType === 'insertText' && e.data === ' ' && !e.isComposing) {
+      const r = getRange();
+      if (r && r.collapsed) tryAutoToggle(getLineBlock(r.startContainer), r, true);
+    }
     ensureNotEmpty();
     scheduleSave();
   });
@@ -409,36 +571,172 @@
     api.deleteNote();
   });
 
-  // 색상 선택기를 열면 에디터 포커스가 빠지므로, 열기 직전의 선택 영역을 기억했다가 복원
+  // -------------------------------------------------------------------------
+  // 글자색 / 배경색
+  //   팔레트의 색을 누를 때마다 바로 적용 (같은 색을 다시 골라도 적용됨)
+  //   색 선택 창이나 메뉴를 여는 동안 편집 영역의 선택이 풀리므로, 직전 선택을 기억했다가 복원
+  // -------------------------------------------------------------------------
   let savedRange = null;
   function rememberSelection() {
     const r = getRange();
-    savedRange = r ? r.cloneRange() : null;
+    if (r) savedRange = r.cloneRange();
   }
+  // 편집 영역에 지금 선택이 있으면 그것을 쓰고, 포커스가 빠져 있을 때만 기억해 둔 선택으로 되돌린다
   function restoreSelection() {
+    if (document.activeElement === editor && getRange()) return;
     editor.focus();
-    if (!savedRange) return;
+    if (!savedRange || !editor.contains(savedRange.startContainer)) return;
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(savedRange);
   }
-  function applySelectionColor(command, color) {
+  document.addEventListener('selectionchange', () => {
+    if (document.activeElement === editor) rememberSelection();
+  });
+
+  const MARKER = { text: '#010203', bg: '#010204' }; // '기본/없음' 을 고를 때 잠시 칠했다가 지우는 표식 색
+  const MARKER_RGB = { text: 'rgb(1, 2, 3)', bg: 'rgb(1, 2, 4)' };
+
+  function applyColor(kind, color) {
     restoreSelection();
     document.execCommand('styleWithCSS', false, 'true');
-    document.execCommand(command, false, color);
+    document.execCommand(kind === 'text' ? 'foreColor' : 'hiliteColor', false, color || MARKER[kind]);
+    if (!color) {
+      const prop = kind === 'text' ? 'color' : 'background-color';
+      editor.querySelectorAll('[style]').forEach((el) => {
+        if (el.style.getPropertyValue(prop) === MARKER_RGB[kind]) {
+          el.style.removeProperty(prop);
+          if (!el.getAttribute('style')) el.removeAttribute('style');
+        }
+      });
+    } else {
+      btnColor.style.setProperty(kind === 'text' ? '--swatch' : '--swatch-bg', color);
+    }
     rememberSelection();
     scheduleSave();
   }
-  function wireColorTool(input, command) {
-    const label = input.closest('.color-tool');
-    const setSwatch = () => label.style.setProperty('--swatch', input.value);
-    setSwatch();
-    input.addEventListener('pointerdown', rememberSelection);
-    input.addEventListener('focus', () => { if (!savedRange) rememberSelection(); });
-    input.addEventListener('input', () => { setSwatch(); applySelectionColor(command, input.value); });
+
+  function clearFormatting() {
+    restoreSelection();
+    document.execCommand('removeFormat');
+    applyColor('bg', null); // removeFormat 이 남기는 배경색까지 정리
+    updateBoldState();
+    scheduleSave();
   }
-  wireColorTool(colorTextInput, 'foreColor');
-  wireColorTool(colorHiliteInput, 'hiliteColor');
+
+  // 빠른 색상 (Ctrl+1~9): 목록과 색은 ⋯ → 빠른 색상 편집에서 바꿀 수 있음
+  let quickColors = [];
+  function applyQuickColor(index) {
+    const q = quickColors[index];
+    if (!q) return;
+    applyColor(q.type === 'bg' ? 'bg' : 'text', q.color);
+  }
+
+  const PALETTE = {
+    text: ['#e03131', '#f08c00', '#e8a400', '#2f9e44', '#1971c2', '#7048e8', '#c2255c', '#868e96'],
+    bg: ['#ffc9c9', '#ffd8a8', '#ffec99', '#b2f2bb', '#a5d8ff', '#d0bfff', '#fcc2d7', '#dee2e6'],
+  };
+  const COLOR_NAMES = {
+    '#e03131': '빨강', '#f08c00': '주황', '#e8a400': '노랑', '#2f9e44': '초록', '#1971c2': '파랑',
+    '#7048e8': '보라', '#c2255c': '분홍', '#868e96': '회색', '#ffc9c9': '빨강', '#ffd8a8': '주황',
+    '#ffec99': '노랑', '#b2f2bb': '초록', '#a5d8ff': '파랑', '#d0bfff': '보라', '#fcc2d7': '분홍',
+    '#dee2e6': '회색',
+  };
+  const RECENT_KEY = (kind) => 'floatmemo.recentColor.' + kind;
+  function loadRecent(kind) {
+    try { const v = localStorage.getItem(RECENT_KEY(kind)); return isHex(v || '') ? v : null; } catch { return null; }
+  }
+  function saveRecent(kind, v) {
+    try { localStorage.setItem(RECENT_KEY(kind), v); } catch { /* 저장 실패는 무시 */ }
+  }
+
+  function swatchButton(kind, color, extraClass, title, label) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch' + (extraClass ? ' ' + extraClass : '');
+    b.title = title;
+    if (label) b.textContent = label;
+    if (color) {
+      if (kind === 'text') { b.style.color = color; b.textContent = label || 'A'; }
+      else b.style.background = color;
+    }
+    b.addEventListener('mousedown', (e) => e.preventDefault()); // 편집 영역의 선택 유지
+    return b;
+  }
+
+  function renderPalette() {
+    palette.querySelectorAll('.pal-row').forEach((row) => {
+      const kind = row.dataset.kind;
+      row.innerHTML = '';
+      const none = swatchButton(kind, null, 'none', kind === 'text' ? '기본 글자색' : '배경색 없음');
+      none.addEventListener('click', () => { closePalette(); applyColor(kind, null); });
+      row.appendChild(none);
+      PALETTE[kind].forEach((c) => {
+        const b = swatchButton(kind, c, '', (COLOR_NAMES[c] || c) + (kind === 'text' ? ' 글자' : ' 배경'));
+        b.addEventListener('click', () => { closePalette(); applyColor(kind, c); });
+        row.appendChild(b);
+      });
+      const recent = loadRecent(kind);
+      if (recent && !PALETTE[kind].includes(recent)) {
+        const b = swatchButton(kind, recent, 'recent', '최근에 직접 고른 색 ' + recent);
+        b.addEventListener('click', () => { closePalette(); applyColor(kind, recent); });
+        row.appendChild(b);
+      }
+      const custom = swatchButton(kind, null, 'custom', '직접 고르기…', '+');
+      custom.addEventListener('click', () => openPicker(kind));
+      row.appendChild(custom);
+    });
+  }
+
+  // 직접 고르기: 매번 확실히 '변경' 이 일어나도록 고르기 전 값을 표식 색으로 맞춰 둔다
+  function openPicker(kind) {
+    rememberSelection();
+    palPicker.dataset.kind = kind;
+    palPicker.value = '#000001';
+    palPicker.click();
+  }
+  palPicker.addEventListener('change', () => {
+    const kind = palPicker.dataset.kind || 'text';
+    const v = palPicker.value;
+    if (!isHex(v) || v === '#000001') return;
+    saveRecent(kind, v);
+    renderPalette();
+    closePalette();
+    applyColor(kind, v);
+  });
+
+  function openPalette() {
+    rememberSelection();
+    renderPalette();
+    const left = Math.max(6, Math.min(btnColor.offsetLeft - 4, document.body.clientWidth - 248));
+    palette.style.left = left + 'px';
+    palette.hidden = false;
+    btnColor.classList.add('active');
+  }
+  function closePalette() {
+    palette.hidden = true;
+    btnColor.classList.remove('active');
+  }
+  btnColor.addEventListener('mousedown', (e) => e.preventDefault());
+  btnColor.addEventListener('click', () => (palette.hidden ? openPalette() : closePalette()));
+  document.addEventListener('mousedown', (e) => {
+    if (!palette.hidden && !palette.contains(e.target) && !btnColor.contains(e.target)) closePalette();
+  });
+  palClear.addEventListener('mousedown', (e) => e.preventDefault());
+  palClear.addEventListener('click', () => { closePalette(); clearFormatting(); });
+  palQuick.addEventListener('mousedown', (e) => e.preventDefault());
+  palQuick.addEventListener('click', () => { closePalette(); api.openOptions('colors'); });
+
+  // ⋯ 더보기: 메모 목록 · 빠른 색상 · 단축키 도움말 · 앱 종료 (창 밖까지 펼쳐지는 기본 메뉴)
+  btnMore.addEventListener('mousedown', (e) => e.preventDefault());
+  btnMore.addEventListener('click', () => {
+    rememberSelection();
+    flushSave();
+    const rect = btnMore.getBoundingClientRect();
+    api.showMoreMenu({ x: Math.round(rect.left), y: Math.round(rect.bottom) });
+  });
+  api.onApplyQuickColor((index) => applyQuickColor(index));
+  api.onQuickColors((list) => { quickColors = Array.isArray(list) ? list : []; });
 
   // -------------------------------------------------------------------------
   // 항상 위 고정
@@ -579,10 +877,11 @@
     collapsed = state.collapsed === true;
     renderCollapsed();
     updateSettings({ ...DEFAULTS, ...(state.settings || {}) }, false);
+    quickColors = Array.isArray(state.quickColors) ? state.quickColors : [];
     editor.focus();
   }
   init();
 
   // 테스트용 훅 (브라우저 테스트에서만 사용)
-  window.__memoTest = { insertToggleAtCaret, toggleBold, updateSettings, getSettings: () => settings };
+  window.__memoTest = { insertToggleAtCaret, toggleBold, updateSettings, getSettings: () => settings, applyQuickColor, insertBlocks };
 })();

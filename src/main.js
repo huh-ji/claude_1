@@ -25,6 +25,30 @@ const DEFAULT_SETTINGS = {
   paperColor: '#fff8c6',
 };
 
+// 빠른 색상 (Ctrl+1 ~ Ctrl+9). 순서가 곧 단축키 번호. ⋯ → 빠른 색상 편집에서 바꿀 수 있음
+const MAX_QUICK_COLORS = 9;
+const DEFAULT_QUICK_COLORS = [
+  { type: 'text', color: '#e03131', name: '빨간 글자' },
+  { type: 'text', color: '#1971c2', name: '파란 글자' },
+  { type: 'bg', color: '#ffec99', name: '노란 배경' },
+  { type: 'text', color: '#2f9e44', name: '초록 글자' },
+  { type: 'bg', color: '#ffc9c9', name: '분홍 배경' },
+];
+
+function sanitizeQuickColors(list) {
+  if (!Array.isArray(list)) return DEFAULT_QUICK_COLORS.map((q) => ({ ...q }));
+  return list
+    .filter((q) => q && typeof q === 'object' && isHexColor(q.color))
+    .slice(0, MAX_QUICK_COLORS)
+    .map((q) => {
+      const type = q.type === 'bg' ? 'bg' : 'text';
+      const name = typeof q.name === 'string' && q.name.trim()
+        ? q.name.trim().slice(0, 20)
+        : (type === 'bg' ? '배경 ' : '글자 ') + q.color.toLowerCase();
+      return { type, color: q.color.toLowerCase(), name };
+    });
+}
+
 // ---------------------------------------------------------------------------
 // 메모 데이터
 //   state = { version: 2, notes: [note...], trayHintShown }
@@ -115,15 +139,20 @@ function loadState() {
       seen.add(n.id);
       return true;
     });
-    return { version: 2, notes, trayHintShown: raw.trayHintShown === true };
+    return {
+      version: 2,
+      notes,
+      trayHintShown: raw.trayHintShown === true,
+      quickColors: sanitizeQuickColors(raw.quickColors),
+    };
   }
   if (raw && typeof raw === 'object') {
     // 1.x 버전(메모 1개) 저장 형식 → 메모 1개짜리 목록으로 변환
     const settings = raw.settings || (isNum(raw.opacity) ? { bgOpacity: raw.opacity } : undefined);
     const note = normalizeNote({ ...raw, id: undefined, title: undefined, settings, open: true });
-    return { version: 2, notes: [note], trayHintShown: false };
+    return { version: 2, notes: [note], trayHintShown: false, quickColors: sanitizeQuickColors(null) };
   }
-  return { version: 2, notes: [], trayHintShown: false };
+  return { version: 2, notes: [], trayHintShown: false, quickColors: sanitizeQuickColors(null) };
 }
 
 let state = null;
@@ -383,20 +412,99 @@ function trayLabel(note) {
   return short.replace(/&/g, '&&'); // Windows 메뉴에서 & 는 단축키 표시로 해석됨
 }
 
-function buildTrayMenu() {
-  const noteItems = state.notes.map((n) => ({
-    label: (n.open ? '● ' : '○ ') + trayLabel(n),
+// 메모 목록 메뉴 항목 (● 열림 / ○ 닫힘, 누르면 그 메모를 열고 앞으로)
+function noteListItems(currentId) {
+  const items = state.notes.map((n) => ({
+    label: (n.open ? '● ' : '○ ') + trayLabel(n) + (n.id === currentId ? '  (이 메모)' : ''),
     click: () => openNoteWindow(n),
   }));
+  return items.length ? items : [{ label: '메모 없음', enabled: false }];
+}
+
+const QUIT_LABEL = '앱 종료 (모든 메모 닫기 · 다음 실행 때 그대로 열림)';
+
+function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: '새 메모', click: () => createNote(lastFocusedNote()) },
     { type: 'separator' },
-    ...(noteItems.length ? noteItems : [{ label: '메모 없음', enabled: false }]),
+    ...noteListItems(null),
     { type: 'separator' },
     { label: '모든 메모 열기', enabled: state.notes.length > 0, click: openAllNotes },
+    { label: '빠른 색상 편집…', click: () => openOptionsWindow('colors') },
+    { label: '단축키 도움말', click: () => openOptionsWindow('help') },
     { type: 'separator' },
-    { label: '종료', click: () => app.quit() },
+    { label: QUIT_LABEL, click: () => app.quit() },
   ]);
+}
+
+// 메모 제목줄의 ⋯ 버튼 메뉴
+function buildMoreMenu(note, win) {
+  const quickItems = state.quickColors.map((q, i) => ({
+    label: `${q.name}   (${q.type === 'bg' ? '배경' : '글자'} ${q.color})`,
+    accelerator: `CommandOrControl+${i + 1}`,
+    registerAccelerator: false, // 표시만 하고, 실제 단축키는 메모 편집 영역에서 처리
+    click: () => { if (!win.isDestroyed()) win.webContents.send('memo:apply-quick-color', i); },
+  }));
+  return Menu.buildFromTemplate([
+    { label: '새 메모', accelerator: 'CommandOrControl+N', registerAccelerator: false, click: () => createNote(note) },
+    { label: '메모 목록', submenu: [
+      ...noteListItems(note.id),
+      { type: 'separator' },
+      { label: '모든 메모 열기', enabled: state.notes.length > 0, click: openAllNotes },
+    ] },
+    { type: 'separator' },
+    { label: '빠른 색상', submenu: [
+      ...(quickItems.length ? quickItems : [{ label: '지정된 빠른 색상 없음', enabled: false }]),
+      { type: 'separator' },
+      { label: '빠른 색상 편집…', click: () => openOptionsWindow('colors') },
+    ] },
+    { label: '단축키 도움말', click: () => openOptionsWindow('help') },
+    { type: 'separator' },
+    { label: QUIT_LABEL, click: () => app.quit() },
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// 설정 창 (빠른 색상 편집 / 단축키 도움말) - 하나만 띄움
+// ---------------------------------------------------------------------------
+let optionsWin = null;
+
+function openOptionsWindow(tab) {
+  if (optionsWin && !optionsWin.isDestroyed()) {
+    optionsWin.webContents.send('memo:options-tab', tab);
+    if (optionsWin.isMinimized()) optionsWin.restore();
+    optionsWin.show();
+    optionsWin.focus();
+    return optionsWin;
+  }
+  optionsWin = new BrowserWindow({
+    width: 560,
+    height: 620,
+    minWidth: 400,
+    minHeight: 400,
+    title: 'FloatMemo 설정',
+    alwaysOnTop: true, // 항상 위에 떠 있는 메모들에 가려지지 않도록
+    autoHideMenuBar: true,
+    show: false,
+    backgroundColor: '#ffffff',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: false,
+    },
+  });
+  optionsWin.loadFile(path.join(__dirname, 'options.html'), { query: { tab: tab === 'help' ? 'help' : 'colors' } });
+  optionsWin.once('ready-to-show', () => optionsWin.show());
+  optionsWin.on('closed', () => { optionsWin = null; });
+  return optionsWin;
+}
+
+function broadcast(channel, payload) {
+  BrowserWindow.getAllWindows().forEach((w) => {
+    if (!w.isDestroyed()) w.webContents.send(channel, payload);
+  });
 }
 
 let trayTimer = null;
@@ -454,9 +562,35 @@ ipcMain.handle('memo:get-state', (e) => {
     collapsed: c.note.collapsed,
     settings: c.note.settings,
     defaults: DEFAULT_SETTINGS,
+    quickColors: state.quickColors,
     platform: process.platform,
   };
 });
+
+ipcMain.handle('memo:get-quick-colors', () => ({
+  list: state.quickColors,
+  defaults: DEFAULT_QUICK_COLORS,
+  max: MAX_QUICK_COLORS,
+}));
+
+ipcMain.on('memo:set-quick-colors', (_e, list) => {
+  state.quickColors = sanitizeQuickColors(list);
+  scheduleSave();
+  refreshTrayMenu();
+  broadcast('memo:quick-colors', state.quickColors);
+});
+
+ipcMain.on('memo:show-more-menu', (e, pos) => {
+  const c = ctxFor(e);
+  if (!c || !c.win) return;
+  const x = Number(pos && pos.x);
+  const y = Number(pos && pos.y);
+  const opts = { window: c.win };
+  if (Number.isFinite(x) && Number.isFinite(y)) Object.assign(opts, { x: Math.round(x), y: Math.round(y) });
+  buildMoreMenu(c.note, c.win).popup(opts);
+});
+
+ipcMain.on('memo:open-options', (_e, tab) => openOptionsWindow(tab));
 
 ipcMain.on('memo:save-content', (e, html, title) => {
   const c = ctxFor(e);
@@ -554,6 +688,8 @@ if (!gotLock) {
   app.on('second-instance', () => showOpenNotes());
 
   app.whenReady().then(() => {
+    // 기본 앱 메뉴의 단축키(Ctrl+R 새로고침, Ctrl+0/+/- 확대 등)가 메모 단축키와 겹치지 않도록 제거
+    if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
     state = loadState();
     createTray();
     showOpenNotes();

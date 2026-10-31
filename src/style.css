@@ -90,32 +90,68 @@ html, body {
 .tool.pin.active { filter: none; opacity: 1; background: transparent; }
 .tool.close:hover { background: #e5533d; color: #fff; }
 
-/* 색상 선택 버튼: 글자 아래에 현재 색 띠 */
-.color-tool { overflow: hidden; }
+/* 색상 버튼: 글자 아래에 마지막으로 쓴 글자색 띠 */
 .color-tool .color-glyph {
   font-weight: 700;
   font-size: 13px;
   line-height: 1;
-  padding-bottom: 3px;
-  border-bottom: 3px solid var(--swatch, #d9242b);
+  padding: 0 2px 2px;
+  border-bottom: 3px solid var(--swatch, #e03131);
+  box-shadow: inset 0 -6px 0 var(--swatch-bg, transparent);
   pointer-events: none;
 }
-.color-tool .color-glyph.hilite {
-  border-bottom: 0;
-  padding: 1px 3px;
-  border-radius: 3px;
-  background: var(--swatch, #fff176);
-}
-.color-tool input[type="color"] {
+.tool.more { font-size: 16px; letter-spacing: -1px; }
+
+/* ---------- 색상 팔레트 (글자색 / 배경색) ---------- */
+.palette {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-  border: 0;
-  padding: 0;
+  top: 36px;
+  left: 6px;
+  z-index: 20;
+  width: 252px;
+  max-width: calc(100% - 12px);
+  max-height: calc(100% - 42px);
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #2b2b2b;
+  font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  -webkit-app-region: no-drag;
 }
+.palette[hidden] { display: none; }
+.pal-label { margin: 2px 2px 4px; color: rgba(0, 0, 0, 0.55); font-size: 11px; }
+.pal-row { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 8px; }
+.swatch {
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  flex: 0 0 auto;
+}
+.swatch:hover { outline: 2px solid rgba(217, 164, 0, 0.8); outline-offset: 1px; }
+.swatch.none { background: linear-gradient(135deg, #fff 45%, #e03131 46%, #e03131 54%, #fff 55%); }
+.swatch.custom { background: conic-gradient(#e03131, #f08c00, #ffd43b, #2f9e44, #1971c2, #7048e8, #e03131); color: #fff; text-shadow: 0 0 2px #000; }
+.swatch.recent { box-shadow: inset 0 0 0 2px #fff; }
+.pal-foot { display: flex; gap: 6px; justify-content: space-between; border-top: 1px solid rgba(0,0,0,.08); padding-top: 6px; }
+.pal-btn {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #f8f9fa;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.pal-btn:hover { background: #fff3bf; }
+.pal-picker { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; left: 0; bottom: 0; border: 0; padding: 0; }
 
 /* ---------- 설정 패널 ---------- */
 #settings {
@@ -244,6 +280,8 @@ body.collapsed .tool.collapse { background: rgba(217, 164, 0, 0.35); }
 
 body.collapsed #settings,
 body.collapsed #editor,
+body.collapsed #palette,
+body.collapsed #titlebar .tools,
 body.collapsed .rs-n, body.collapsed .rs-s,
 body.collapsed .rs-ne, body.collapsed .rs-nw,
 body.collapsed .rs-se, body.collapsed .rs-sw {

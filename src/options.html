@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>FloatMemo 설정</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="colors">빠른 색상</button>
+    <button class="tab" role="tab" data-tab="help">단축키 도움말</button>
+  </nav>
+
+  <section id="tab-colors" class="panel" role="tabpanel">
+    <p class="lead">글자를 선택하고 <kbd>Ctrl</kbd>+<kbd>번호</kbd>를 누르면 그 색이 바로 칠해집니다. 순서가 곧 단축키 번호입니다. 바꾼 내용은 바로 저장되고 모든 메모에 적용됩니다.</p>
+    <ol id="qc-list" class="qc-list"></ol>
+    <div class="qc-actions">
+      <button id="qc-add" class="btn">+ 색 추가</button>
+      <button id="qc-reset" class="btn subtle">기본값으로 되돌리기</button>
+    </div>
+  </section>
+
+  <section id="tab-help" class="panel" role="tabpanel" hidden>
+    <h2>서식</h2>
+    <table class="keys">
+      <tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>굵게</td></tr>
+      <tbody id="help-quick"></tbody>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>\</kbd></td><td>선택한 글자의 굵게·색·배경 지우기</td></tr>
+      <tr><td>제목줄 <b>A</b> 버튼</td><td>글자색·배경색 팔레트 (같은 색을 다시 눌러도 적용, <b>+</b> 로 직접 고르기)</td></tr>
+    </table>
+
+    <h2>토글 (노션 스타일)</h2>
+    <table class="keys">
+      <tr><td><kbd>&gt;</kbd> 다음 <kbd>Space</kbd> 또는 <kbd>Tab</kbd></td><td>줄 맨 앞에서 입력하면 토글로 바뀜 (뒤에 있던 글은 토글 제목이 됨)</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd></td><td>토글 만들기</td></tr>
+      <tr><td><kbd>Tab</kbd></td><td>바로 위가 토글이면 지금 줄을 그 토글 안으로 넣기</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>Tab</kbd></td><td>토글 안의 줄을 토글 밖(바로 아래)으로 꺼내기</td></tr>
+      <tr><td>토글 제목에서 <kbd>Enter</kbd></td><td>토글 안 첫 줄로 이동</td></tr>
+      <tr><td>토글 안 빈 마지막 줄에서 <kbd>Enter</kbd></td><td>토글 밖으로 나가기</td></tr>
+      <tr><td>▸ 화살표 클릭</td><td>접기 / 펼치기</td></tr>
+    </table>
+
+    <h2>메모 · 창</h2>
+    <table class="keys">
+      <tr><td><kbd>Ctrl</kbd>+<kbd>N</kbd> 또는 <b>+</b></td><td>새 메모</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd></td><td>(어디서든) 열린 메모 모두 보이기 / 숨기기</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></td><td>메모지 배경 투명도</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd></td><td>글자 크기 크게 / 작게 / 기본</td></tr>
+      <tr><td>⌃ 버튼</td><td>내용 접기 (제목줄만 남기고 맨 위에 유지)</td></tr>
+      <tr><td>📌 버튼</td><td>항상 위에 고정 켜기 / 끄기</td></tr>
+      <tr><td>✕ 버튼</td><td>이 메모만 닫기 (내용은 보존, ⋯ → 메모 목록에서 다시 열기)</td></tr>
+      <tr><td>⋯ → 앱 종료</td><td>모든 메모를 한 번에 닫기. 다음에 실행하면 열려 있던 메모가 모두 다시 열림</td></tr>
+    </table>
+
+    <h2>붙여넣기</h2>
+    <p class="note">다른 곳에서 복사한 글의 굵게·기울임·밑줄·취소선·글자색·배경색·줄바꿈·목록·토글을 살려서 붙여넣습니다. 글꼴과 글자 크기는 메모 설정을 따릅니다. 서식 없이 붙여넣으려면 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>를 누르세요.</p>
+  </section>
+
+  <script src="options.js"></script>
+</body>
+</html>
